@@ -1,4 +1,4 @@
-// AUTO DIGITADOR - Com função de digitação do código ofuscado
+// AUTO DIGITADOR - Com função de digitação do código  
 (function() {
     'use strict';
 
