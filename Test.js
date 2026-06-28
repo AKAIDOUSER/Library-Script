@@ -1,184 +1,198 @@
-// AUTO DIGITADOR - Versão Mais Simples Ainda
-(function() {
-    'use strict';
+// FUNÇÃO DE DIGITAÇÃO EXTRAÍDA DO SEU CÓDIGO
+// (Versão limpa e funcional)
 
-    let digitando = false;
+function digitarTexto(elemento, texto, velocidade = 50, mostrarProgresso = true) {
+    let index = 0;
     let timeoutId = null;
-    let elementoAlvo = null;
-    let textoCompleto = '';
-    let indiceAtual = 0;
+    let isRunning = true;
 
-    // Velocidade fixa - boa para a maioria dos casos
-    const VELOCIDADE = 50; // milissegundos entre caracteres
-
-    // Função que digita um caractere por vez
-    function digitarProximo() {
-        if (!digitando || indiceAtual >= textoCompleto.length) {
-            if (indiceAtual >= textoCompleto.length) {
-                alert('✅ Digitação concluída!');
-                digitando = false;
+    function typeNextChar() {
+        if (!isRunning || index >= texto.length) {
+            if (index >= texto.length) {
+                // Dispara eventos de finalização
+                elemento.dispatchEvent(new Event('blur', { bubbles: true }));
+                elemento.dispatchEvent(new Event('focusout', { bubbles: true }));
+                console.log('✅ Digitação concluída!');
             }
             return;
         }
 
-        const char = textoCompleto[indiceAtual];
-        const elemento = elementoAlvo;
+        const char = texto[index];
+        const total = texto.length;
+        const progress = Math.round((index / total) * 100);
+
+        // Mostra progresso a cada 10%
+        if (mostrarProgresso && (progress % 10 === 0 || index === 0)) {
+            console.log(`📊 Progresso: ${progress}% (${index}/${total})`);
+        }
 
         try {
-            // Para INPUT e TEXTAREA
+            // ===== INSERE O CARACTERE =====
             if (elemento.tagName === 'INPUT' || elemento.tagName === 'TEXTAREA') {
-                const posicao = elemento.selectionStart || 0;
-                const valorAtual = elemento.value || '';
+                const start = elemento.selectionStart || 0;
+                const end = elemento.selectionEnd || 0;
+                const value = elemento.value || '';
                 
-                elemento.value = valorAtual.substring(0, posicao) + char + valorAtual.substring(posicao);
-                elemento.setSelectionRange(posicao + 1, posicao + 1);
+                elemento.value = value.substring(0, start) + char + value.substring(end);
+                
+                const newPos = start + 1;
+                elemento.setSelectionRange(newPos, newPos);
                 
             } else if (elemento.isContentEditable) {
-                // Para conteúdo editável
-                const selecao = window.getSelection();
-                if (selecao && selecao.rangeCount > 0) {
-                    const range = selecao.getRangeAt(0);
-                    const node = document.createTextNode(char);
-                    range.insertNode(node);
-                    range.setStartAfter(node);
+                const sel = window.getSelection();
+                if (sel && sel.rangeCount > 0) {
+                    const range = sel.getRangeAt(0);
+                    const textNode = document.createTextNode(char);
+                    range.insertNode(textNode);
+                    range.setStartAfter(textNode);
                     range.collapse(true);
-                    selecao.removeAllRanges();
-                    selecao.addRange(range);
+                    sel.removeAllRanges();
+                    sel.addRange(range);
                 }
             }
 
-            // Dispara eventos para sites modernos
-            elemento.dispatchEvent(new Event('input', { bubbles: true }));
-            elemento.dispatchEvent(new Event('change', { bubbles: true }));
-            elemento.dispatchEvent(new KeyboardEvent('keydown', { key: char, bubbles: true }));
-            elemento.dispatchEvent(new KeyboardEvent('keypress', { key: char, bubbles: true }));
+            // ===== DISPARA EVENTOS =====
+            // Eventos de input/change (CRUCIAIS)
+            elemento.dispatchEvent(new Event('input', { bubbles: true, cancelable: true, composed: true }));
+            elemento.dispatchEvent(new Event('change', { bubbles: true, cancelable: true, composed: true }));
+            
+            // Eventos de teclado
+            elemento.dispatchEvent(new KeyboardEvent('keydown', { key: char, bubbles: true, cancelable: true, composed: true }));
+            elemento.dispatchEvent(new KeyboardEvent('keypress', { key: char, bubbles: true, cancelable: true, composed: true }));
+            elemento.dispatchEvent(new KeyboardEvent('keyup', { key: char, bubbles: true, cancelable: true, composed: true }));
+            
+            // Evento de composição (para alguns frameworks)
+            elemento.dispatchEvent(new CompositionEvent('compositionupdate', {
+                bubbles: true,
+                cancelable: true,
+                data: char
+            }));
 
-            // Para React
+            // ===== PARA REACT =====
             if (elemento._reactInternalInstance || elemento.__reactInternalInstance) {
-                const setter = Object.getOwnPropertyDescriptor(
+                const nativeSetter = Object.getOwnPropertyDescriptor(
                     window.HTMLInputElement.prototype, 'value'
                 )?.set;
-                if (setter) {
-                    setter.call(elemento, elemento.value);
+                if (nativeSetter) {
+                    nativeSetter.call(elemento, elemento.value);
                 }
             }
 
         } catch (e) {
-            alert('❌ Erro ao digitar: ' + e.message);
-            digitando = false;
+            console.error('❌ Erro ao digitar:', e);
+            isRunning = false;
             return;
         }
 
-        indiceAtual++;
+        index++;
 
-        // Delay com variação para parecer humano
-        let delay = VELOCIDADE;
-        if (char === ' ' || char === '\n') {
-            delay = VELOCIDADE * 3;
+        // ===== CALCULA DELAY =====
+        let delay = velocidade;
+        if (char === ' ' || char === '\n' || char === '\t') {
+            delay = velocidade * 3;
         } else if ('.!?'.includes(char)) {
-            delay = VELOCIDADE * 2;
+            delay = velocidade * 2;
         }
-        delay += Math.random() * 15;
+        // Adiciona variação aleatória
+        delay += Math.random() * 20 - 10;
 
-        timeoutId = setTimeout(digitarProximo, Math.max(10, delay));
+        timeoutId = setTimeout(typeNextChar, Math.max(10, delay));
     }
 
-    // Função principal
-    function iniciarDigitacao() {
-        if (digitando) {
-            if (!confirm('⚠️ Já está digitando. Reiniciar?')) {
-                return;
-            }
-            pararDigitacao();
-        }
+    // Inicia a digitação
+    typeNextChar();
 
-        // PASSO 1: Instrução
-        alert('📌 CLIQUE no campo de texto onde deseja digitar');
-
-        // PASSO 2: Aguarda o clique
-        const handlerClique = function(e) {
-            const elemento = e.target;
-            
-            const valido = elemento.tagName === 'INPUT' || 
-                          elemento.tagName === 'TEXTAREA' || 
-                          elemento.isContentEditable;
-            
-            if (!valido) {
-                alert('❌ Clique em um campo de texto!');
-                return;
-            }
-
-            document.removeEventListener('click', handlerClique);
-
-            // PASSO 3: Pede o texto
-            const texto = prompt('📝 Cole o texto para digitar:');
-            if (!texto || texto.trim() === '') {
-                alert('❌ Texto vazio!');
-                return;
-            }
-
-            // Configura e começa
-            elementoAlvo = elemento;
-            textoCompleto = texto;
-            indiceAtual = 0;
-            digitando = true;
-
-            // Limpa o campo
-            if (elemento.tagName === 'INPUT' || elemento.tagName === 'TEXTAREA') {
-                elemento.value = '';
-                elemento.dispatchEvent(new Event('input', { bubbles: true }));
-            } else if (elemento.isContentEditable) {
-                elemento.innerHTML = '';
-            }
-
-            elemento.focus();
-            
-            alert('🚀 Digitando...');
-            setTimeout(digitarProximo, 300);
-        };
-
-        document.addEventListener('click', handlerClique);
-
-        setTimeout(() => {
-            document.removeEventListener('click', handlerClique);
-        }, 30000);
-    }
-
-    function pararDigitacao() {
-        digitando = false;
+    // Retorna função para parar
+    return function parar() {
+        isRunning = false;
         if (timeoutId) {
             clearTimeout(timeoutId);
             timeoutId = null;
         }
-        alert('⏹ Parado!');
-    }
-
-    // Atalhos
-    document.addEventListener('keydown', (e) => {
-        if (e.ctrlKey && e.shiftKey && e.key === 'I') {
-            e.preventDefault();
-            iniciarDigitacao();
-        }
-        if (e.ctrlKey && e.shiftKey && e.key === 'P') {
-            e.preventDefault();
-            pararDigitacao();
-        }
-    });
-
-    // Comandos
-    window.autoTyper = {
-        iniciar: iniciarDigitacao,
-        parar: pararDigitacao
+        console.log('⏹ Digitação interrompida');
     };
+}
 
-    console.log('🤖 Auto Digitador carregado!');
-    console.log('📝 Use: autoTyper.iniciar() ou autoTyper.parar()');
-    console.log('⌨️ Atalhos: Ctrl+Shift+I (iniciar) | Ctrl+Shift+P (parar)');
+// ===== EXEMPLO DE USO =====
+// Para usar, primeiro selecione o campo e depois chame a função:
 
-    setTimeout(() => {
-        if (confirm('🤖 Auto Digitador carregado!\n\nIniciar agora?')) {
-            iniciarDigitacao();
+// 1. Clique em um campo de texto
+// 2. Execute no console:
+/*
+const campo = document.activeElement;
+const parar = digitarTexto(campo, 'Seu texto aqui', 50, true);
+
+// Para parar:
+// parar();
+*/
+
+// ===== VERSÃO COM INTERFACE SIMPLES =====
+function autoDigitar() {
+    alert('📌 Clique no campo de texto e depois pressione OK');
+    
+    const clickHandler = function(e) {
+        const elemento = e.target;
+        
+        const isValid = elemento.tagName === 'INPUT' || 
+                       elemento.tagName === 'TEXTAREA' || 
+                       elemento.isContentEditable;
+        
+        if (!isValid) {
+            alert('❌ Clique em um campo de texto válido!');
+            return;
         }
-    }, 500);
+        
+        document.removeEventListener('click', clickHandler);
+        
+        const texto = prompt('📝 Cole o texto para digitar:');
+        if (!texto || texto.trim() === '') {
+            alert('❌ Texto vazio!');
+            return;
+        }
+        
+        // Limpa o campo
+        if (elemento.tagName === 'INPUT' || elemento.tagName === 'TEXTAREA') {
+            elemento.value = '';
+            elemento.dispatchEvent(new Event('input', { bubbles: true }));
+        } else if (elemento.isContentEditable) {
+            elemento.innerHTML = '';
+        }
+        
+        elemento.focus();
+        
+        alert('🚀 Digitando...');
+        digitarTexto(elemento, texto, 50, true);
+    };
+    
+    document.addEventListener('click', clickHandler);
+    
+    setTimeout(() => {
+        document.removeEventListener('click', clickHandler);
+    }, 30000);
+}
 
-})();
+// Comandos
+window.digitarTexto = digitarTexto;
+window.autoDigitar = autoDigitar;
+
+console.log('🤖 Função de digitação extraída!');
+console.log('📝 Como usar:');
+console.log('  1. autoDigitar() - Interface simples');
+console.log('  2. digitarTexto(elemento, texto, velocidade) - Direto');
+console.log('  3. Atalho: Ctrl+Shift+D para iniciar');
+console.log('  4. Atalho: Ctrl+Shift+S para parar');
+
+// Atalhos
+document.addEventListener('keydown', (e) => {
+    if (e.ctrlKey && e.shiftKey && e.key === 'D') {
+        e.preventDefault();
+        autoDigitar();
+    }
+    if (e.ctrlKey && e.shiftKey && e.key === 'S') {
+        e.preventDefault();
+        // Para a digitação atual (precisa de uma variável global)
+        if (window._pararDigitacao) {
+            window._pararDigitacao();
+        }
+    }
+});
