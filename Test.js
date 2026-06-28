@@ -1,4 +1,4 @@
-// AUTO DIGITADOR - APENAS FUNÇÃO DE DIGITAÇÃO
+// AUTO DIGITADOR - APENA FUNÇÃO DE DIGITAÇÃO
 (function() {
     'use strict';
 
