@@ -48,16 +48,16 @@
 
             const el = e.target;
             if (!(el && (el.isContentEditable || el.tagName === 'INPUT' || el.tagName === 'TEXTAREA'))) {
-                alert('❌ Esse não é um campo válido.');
+                alert('Esse não é um campo válido.');
                 return;
             }
 
-            const texto = prompt('📋 Cole ou digite o texto:');
+            const texto = prompt('Cole ou digite o texto:');
             if (texto == null) return;
 
             // Pergunta a velocidade
             const vel = prompt(
-                '⚡ Velocidade (ms entre caracteres):\n\n' +
+                'Velocidade (ms entre caracteres):\n\n' +
                 '10 - Muito Rápido\n' +
                 '20 - Rápido\n' +
                 '40 - Normal (padrão)\n' +
@@ -65,10 +65,10 @@
                 '100 - Muito Devagar\n' +
                 'humana - Velocidade Humana\n\n' +
                 'Digite o valor:',
-                '40'
+                '10'
             );
 
-            const velocidade = vel || '40';
+            const velocidade = vel || '10';
             iniciarDigitacao(el, texto, velocidade);
         };
 
@@ -81,7 +81,7 @@
     window.iniciarModV2 = function() {
         ensureListenerInstalled();
         window[NS].aguardandoCampo = true;
-        alert('✍️ Clique no campo onde deseja digitar o texto.');
+        alert('Clique no campo onde deseja digitar o texto.');
     };
 
     // ===============================
@@ -229,7 +229,7 @@
         }
 
         // Inicia
-        alert('🚀 Digitando...');
+        //alert('🚀 Digitando...');
         window[NS].typingTimeoutId = setTimeout(digitarProximoCaractere, obterProximoIntervalo());
     }
 
