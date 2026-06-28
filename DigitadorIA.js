@@ -1,17 +1,17 @@
-// AUTO DIGITADOR COM IA - VERSÃO 3.0
+// AUTO DIGITADOR COM IA - VERSÃO GROK (xAI)
 (function() {
     'use strict';
 
-    const NS = '__digitadorV3__';
+    const NS = '__digitadorGrok__';
 
     // ========================
-    // CONFIGURAÇÃO DA API
+    // CONFIGURAÇÃO DA API GROK
     // ========================
     const CONFIG = {
-        // 🔑 COLOQUE SUA API KEY AQUI
-        DEEPSEEK_API_KEY: 'sk-95c12e2ebbee4589a269ef9fc9cb9930',
-        API_URL: 'https://api.deepseek.com/v1/chat/completions',
-        MODEL: 'deepseek-chat'
+        // 🔑 API KEY DO GROK (xAI)
+        GROK_API_KEY: 'xai-KwYxZI63lO1Peu6865l16ZgLz5fPt65x0XAEcvzRA7NiUEtcIbatgGd1ekJcicjraIwUeV0Sz7RuL0N8',
+        API_URL: 'https://api.x.ai/v1/chat/completions',
+        MODEL: 'grok-1' // ou 'grok-2-latest' se disponível
     };
 
     // ========================
@@ -46,13 +46,13 @@
     };
 
     // ========================
-    // FUNÇÃO PARA GERAR REDAÇÃO COM IA
+    // FUNÇÃO PARA GERAR REDAÇÃO COM GROK
     // ========================
-    async function gerarRedacaoComIA(tema, palavrasMinimas) {
+    async function gerarRedacaoComGrok(tema, palavrasMinimas) {
         try {
             // Mostra popup de carregamento
             const loadingMsg = document.createElement('div');
-            loadingMsg.id = 'digitadorV2-loading';
+            loadingMsg.id = 'digitadorGrok-loading';
             loadingMsg.style.cssText = `
                 position: fixed;
                 top: 50%;
@@ -66,13 +66,14 @@
                 text-align: center;
                 font-family: Arial, sans-serif;
                 font-size: 18px;
+                max-width: 400px;
             `;
             loadingMsg.innerHTML = `
-                <div style="font-size: 24px; margin-bottom: 15px;">🤖</div>
-                <div style="font-weight: bold; margin-bottom: 10px;">Gerando redação com IA...</div>
-                <div style="font-size: 14px; color: #666;">Isso pode levar alguns segundos</div>
+                <div style="font-size: 48px; margin-bottom: 15px;">🧠</div>
+                <div style="font-weight: bold; margin-bottom: 10px;">Gerando redação com Grok AI...</div>
+                <div style="font-size: 14px; color: #666; margin-bottom: 15px;">A IA do Elon Musk está pensando...</div>
                 <div style="margin-top: 15px;">
-                    <div style="display: inline-block; width: 30px; height: 30px; border: 4px solid #f3f3f3; border-top: 4px solid #3498db; border-radius: 50%; animation: spin 1s linear infinite;"></div>
+                    <div style="display: inline-block; width: 40px; height: 40px; border: 4px solid #f3f3f3; border-top: 4px solid #6c5ce7; border-radius: 50%; animation: spin 1s linear infinite;"></div>
                 </div>
                 <style>
                     @keyframes spin {
@@ -83,11 +84,6 @@
             `;
             document.body.appendChild(loadingMsg);
 
-            // Verifica se a API key está configurada
-            if (CONFIG.DEEPSEEK_API_KEY === 'sua-api-key-aqui') {
-                throw new Error('⚠️ Configure sua API Key do DeepSeek no código (linha 14)');
-            }
-
             // Prepara o prompt
             const prompt = `Escreva uma redação sobre o tema: "${tema}". 
             A redação deve ter aproximadamente ${palavrasMinimas} palavras.
@@ -95,19 +91,19 @@
             Não inclua título no texto.
             Apenas o conteúdo da redação.`;
 
-            // Faz a requisição para a API
+            // Faz a requisição para a API do Grok
             const response = await fetch(CONFIG.API_URL, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${CONFIG.DEEPSEEK_API_KEY}`
+                    'Authorization': `Bearer ${CONFIG.GROK_API_KEY}`
                 },
                 body: JSON.stringify({
                     model: CONFIG.MODEL,
                     messages: [
                         {
                             role: 'system',
-                            content: 'Você é um assistente especialista em escrever redações de alta qualidade.'
+                            content: 'Você é um assistente especialista em escrever redações de alta qualidade em português. Seja criativo e detalhista.'
                         },
                         {
                             role: 'user',
@@ -115,13 +111,14 @@
                         }
                     ],
                     temperature: 0.7,
-                    max_tokens: 2000
+                    max_tokens: 2000,
+                    top_p: 0.9
                 })
             });
 
             if (!response.ok) {
                 const errorData = await response.json();
-                throw new Error(`Erro na API: ${errorData.error?.message || response.statusText}`);
+                throw new Error(`Erro na API Grok: ${errorData.error?.message || response.statusText}`);
             }
 
             const data = await response.json();
@@ -136,7 +133,7 @@
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${CONFIG.DEEPSEEK_API_KEY}`
+                    'Authorization': `Bearer ${CONFIG.GROK_API_KEY}`
                 },
                 body: JSON.stringify({
                     model: CONFIG.MODEL,
@@ -176,10 +173,10 @@
 
         } catch (error) {
             // Remove o loading se existir
-            const loading = document.getElementById('digitadorV2-loading');
+            const loading = document.getElementById('digitadorGrok-loading');
             if (loading) document.body.removeChild(loading);
             
-            alert(`❌ Erro ao gerar redação: ${error.message}`);
+            alert(`❌ Erro ao gerar redação com Grok: ${error.message}`);
             throw error;
         }
     }
@@ -197,7 +194,7 @@
             if (!window[NS].aguardandoCampo) return;
 
             const path = e.composedPath ? e.composedPath() : [];
-            if (path.some(n => n && n.id && String(n.id).startsWith('digitadorV2-'))) return;
+            if (path.some(n => n && n.id && String(n.id).startsWith('digitadorGrok-'))) return;
 
             e.preventDefault();
             e.stopPropagation();
@@ -218,7 +215,7 @@
                 const tema = prompt(
                     '📝 TEMA DA REDAÇÃO\n\n' +
                     'Digite o tema sobre o qual a redação deve ser escrita:\n' +
-                    '(Exemplo: "A importância da inteligência artificial na educação")',
+                    '(Exemplo: "O impacto das redes sociais na sociedade")',
                     ''
                 );
                 if (tema === null) return;
@@ -233,7 +230,8 @@
                 const palavrasInput = prompt(
                     '📊 QUANTIDADE DE PALAVRAS\n\n' +
                     'Digite o número mínimo de palavras que a redação deve ter:\n' +
-                    '(Exemplo: 300)',
+                    '(Exemplo: 300)\n' +
+                    'Mínimo recomendado: 200 palavras',
                     '300'
                 );
                 if (palavrasInput === null) return;
@@ -249,24 +247,24 @@
                 // ========================
                 const vel = prompt(
                     '⚡ VELOCIDADE DE DIGITAÇÃO\n\n' +
-                    '10 - Muito Rápido\n' +
-                    '20 - Rápido\n' +
-                    '40 - Normal (padrão)\n' +
-                    '60 - Devagar\n' +
-                    '100 - Muito Devagar\n' +
-                    'humana - Velocidade Humana\n\n' +
-                    'Digite o valor:',
+                    '10 - Muito Rápido ⚡\n' +
+                    '20 - Rápido 🚀\n' +
+                    '40 - Normal (padrão) ✅\n' +
+                    '60 - Devagar 🐢\n' +
+                    '100 - Muito Devagar 🐌\n' +
+                    'humana - Velocidade Humana 👤\n\n' +
+                    'Digite o valor desejado:',
                     '40'
                 );
 
                 const velocidade = vel || '40';
 
                 // ========================
-                // GERAR REDAÇÃO COM IA
+                // GERAR REDAÇÃO COM GROK
                 // ========================
-                alert('🤖 Gerando redação com IA... (aguarde)');
+                alert('🧠 Gerando redação com Grok AI... (aguarde alguns segundos)');
                 
-                const resultado = await gerarRedacaoComIA(tema, palavrasMinimas);
+                const resultado = await gerarRedacaoComGrok(tema, palavrasMinimas);
                 
                 if (!resultado || !resultado.texto) {
                     throw new Error('Não foi possível gerar a redação.');
@@ -289,10 +287,10 @@
     // ========================
     // API PÚBLICA
     // ========================
-    window.iniciarModV3 = function() {
+    window.iniciarModGrok = function() {
         ensureListenerInstalled();
         window[NS].aguardandoCampo = true;
-        alert('✍️ Clique no campo onde deseja digitar a redação gerada pela IA.');
+        alert('🧠 Clique no campo onde deseja digitar a redação gerada pelo Grok AI.');
     };
 
     // ========================
@@ -439,7 +437,7 @@
                 // ========================
                 // POPUP FINAL COM O TÍTULO
                 // ========================
-                alert(`✅ Digitação concluída!\n\n📖 Título: ${titulo || 'Sem título'}`);
+                alert(`✅ Digitação concluída!\n\n📖 Título da Redação:\n"${titulo || 'Sem título'}"`);
             }
         }
 
@@ -451,10 +449,18 @@
     // ========================
     // INÍCIO IMEDIATO
     // ========================
-    window.iniciarModV3();
+    window.iniciarModGrok();
 
     // Instruções no console
-    console.log('%c🤖 Auto Digitador com IA - V3.0', 'font-size: 20px; font-weight: bold;');
-    console.log('%c📌 Configure sua API Key do DeepSeek na linha 14 do script', 'color: #ff6b6b;');
-    console.log('%c🚀 Execute window.iniciarModV3() para iniciar', 'color: #4ecdc4;');
+    console.log('%c🧠 Auto Digitador com Grok AI - V1.0', 'font-size: 20px; font-weight: bold; color: #2c3e50;');
+    console.log('%c✅ API Key do Grok (xAI) configurada com sucesso!', 'color: #27ae60; font-weight: bold;');
+    console.log('%c🚀 O script já está rodando! Clique em qualquer campo de texto para começar.', 'color: #3498db;');
+    console.log('%c📝 Instruções:', 'font-weight: bold;');
+    console.log('  1. Clique em um campo de texto (input, textarea ou editor)');
+    console.log('  2. Digite o tema da redação');
+    console.log('  3. Defina o número mínimo de palavras');
+    console.log('  4. Escolha a velocidade de digitação');
+    console.log('  5. Aguarde o Grok AI gerar a redação');
+    console.log('  6. Ao final, veja o título da redação!');
+    console.log('%c🔗 Documentação Grok: https://docs.x.ai', 'color: #6c5ce7;');
 })();
