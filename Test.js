@@ -1,314 +1,239 @@
-// AUTO DIGITADOR - Versão para Redação Paraná
+// AUTO DIGITADOR - APENAS FUNÇÃO DE DIGITAÇÃO
 (function() {
     'use strict';
 
-    let digitando = false;
-    let timeoutId = null;
-    let elementoAlvo = null;
-    let textoCompleto = '';
-    let indiceAtual = 0;
-    let textoAnterior = '';
+    const NS = '__digitadorV2__';
 
-    // ============================================
-    // FUNÇÃO DE DIGITAÇÃO COM EVENTOS COMPLETOS
-    // ============================================
-    function digitarProximo() {
-        if (!digitando || indiceAtual >= textoCompleto.length) {
-            if (indiceAtual >= textoCompleto.length) {
-                alert('✅ Digitação concluída!');
-                digitando = false;
-            }
-            return;
-        }
-
-        const char = textoCompleto[indiceAtual];
-        const elemento = elementoAlvo;
-
+    // ---- Limpeza de execuções anteriores ----
+    if (window[NS]) {
         try {
-            // ===== INSERE O CARACTERE =====
-            if (elemento.tagName === 'INPUT' || elemento.tagName === 'TEXTAREA') {
-                const start = elemento.selectionStart || 0;
-                const currentValue = elemento.value || '';
-                
-                // Insere o caractere
-                const novoValor = currentValue.substring(0, start) + char + currentValue.substring(start);
-                elemento.value = novoValor;
-                
-                // Move o cursor
-                const newPos = start + 1;
-                elemento.setSelectionRange(newPos, newPos);
-                
-                // Força o scroll para acompanhar
-                elemento.scrollTop = elemento.scrollHeight;
-                
-            } else if (elemento.isContentEditable) {
-                const selection = window.getSelection();
-                if (selection && selection.rangeCount > 0) {
-                    const range = selection.getRangeAt(0);
-                    const textNode = document.createTextNode(char);
-                    range.insertNode(textNode);
-                    range.setStartAfter(textNode);
-                    range.collapse(true);
-                    selection.removeAllRanges();
-                    selection.addRange(range);
-                }
+            if (window[NS].listenerInstalado && window[NS].onDocClick) {
+                document.removeEventListener('click', window[NS].onDocClick, true);
             }
-
-            // ===== DISPARA EVENTOS EM ORDEM =====
-            // 1. Keydown
-            elemento.dispatchEvent(new KeyboardEvent('keydown', { 
-                key: char, 
-                bubbles: true, 
-                cancelable: true,
-                composed: true 
-            }));
-            
-            // 2. Keypress
-            elemento.dispatchEvent(new KeyboardEvent('keypress', { 
-                key: char, 
-                bubbles: true, 
-                cancelable: true,
-                composed: true 
-            }));
-            
-            // 3. Input (MAIS IMPORTANTE)
-            elemento.dispatchEvent(new Event('input', { 
-                bubbles: true, 
-                cancelable: true,
-                composed: true 
-            }));
-            
-            // 4. Change
-            elemento.dispatchEvent(new Event('change', { 
-                bubbles: true, 
-                cancelable: true,
-                composed: true 
-            }));
-            
-            // 5. Keyup
-            elemento.dispatchEvent(new KeyboardEvent('keyup', { 
-                key: char, 
-                bubbles: true, 
-                cancelable: true,
-                composed: true 
-            }));
-
-            // ===== REACT: Força atualização =====
-            if (elemento._reactInternalInstance || elemento.__reactInternalInstance) {
-                const nativeSetter = Object.getOwnPropertyDescriptor(
-                    window.HTMLInputElement.prototype, 'value'
-                )?.set;
-                if (nativeSetter) {
-                    nativeSetter.call(elemento, elemento.value);
-                }
-                // Dispara evento de mudança do React
-                const ev = new Event('input', { bubbles: true });
-                const nativeInputEv = new Event('input', { bubbles: true });
-                elemento.dispatchEvent(nativeInputEv);
-            }
-
-            // ===== VUE: Força atualização =====
-            if (elemento.__vue__ || elemento._vnode) {
-                elemento.dispatchEvent(new Event('input', { bubbles: true }));
-            }
-
-            // ===== ANGULAR: Força atualização =====
-            if (elemento.ngControl || elemento._ngZone) {
-                elemento.dispatchEvent(new Event('input', { bubbles: true }));
-                elemento.dispatchEvent(new Event('change', { bubbles: true }));
-            }
-
-        } catch (e) {
-            console.error('Erro:', e);
-            alert('❌ Erro ao digitar!');
-            digitando = false;
-            return;
-        }
-
-        indiceAtual++;
-
-        // ===== DELAY MAIS REALISTA =====
-        let delay = 50; // base
-        
-        // Variação para parecer humano
-        if (char === ' ') {
-            delay = 120 + Math.random() * 30;
-        } else if ('.!?'.includes(char)) {
-            delay = 150 + Math.random() * 50;
-        } else if (char === ',' || char === ';') {
-            delay = 80 + Math.random() * 20;
-        } else if (char === '\n') {
-            delay = 300 + Math.random() * 100;
-        } else {
-            delay = 40 + Math.random() * 40;
-        }
-
-        // A cada 10 caracteres, uma pausa mais longa
-        if (indiceAtual % 10 === 0 && indiceAtual > 0) {
-            delay += 80 + Math.random() * 40;
-        }
-
-        timeoutId = setTimeout(digitarProximo, Math.max(10, delay));
+            if (window[NS].typingIntervalId) clearTimeout(window[NS].typingIntervalId);
+        } catch (_) {}
     }
 
-    // ============================================
-    // FUNÇÃO PARA DETECTAR SE O TEXTO FOI APAGADO
-    // ============================================
-    function monitorarCampo() {
-        if (!elementoAlvo || !digitando) return;
-        
-        const valorAtual = elementoAlvo.value || '';
-        const textoEsperado = textoCompleto.substring(0, indiceAtual);
-        
-        // Se o texto foi apagado, restaura
-        if (valorAtual.length < textoEsperado.length && valorAtual.length > 0) {
-            console.log('🔄 Texto apagado, restaurando...');
-            elementoAlvo.value = textoEsperado;
-            elementoAlvo.dispatchEvent(new Event('input', { bubbles: true }));
-            elementoAlvo.dispatchEvent(new Event('change', { bubbles: true }));
-        }
-        
-        // Se o campo foi limpo completamente
-        if (valorAtual.length === 0 && indiceAtual > 0) {
-            console.log('🔄 Campo limpo, restaurando...');
-            elementoAlvo.value = textoEsperado;
-            elementoAlvo.dispatchEvent(new Event('input', { bubbles: true }));
-            elementoAlvo.dispatchEvent(new Event('change', { bubbles: true }));
-        }
-    }
-
-    // ============================================
-    // FUNÇÃO PRINCIPAL
-    // ============================================
-    function iniciarDigitacao() {
-        if (digitando) {
-            if (!confirm('⚠️ Já está digitando. Reiniciar?')) {
-                return;
-            }
-            pararDigitacao();
-        }
-
-        alert('📌 1️⃣ CLIQUE no campo de texto');
-
-        const handlerClique = function(e) {
-            const elemento = e.target;
-            
-            const valido = elemento.tagName === 'INPUT' || 
-                          elemento.tagName === 'TEXTAREA' || 
-                          elemento.isContentEditable;
-            
-            if (!valido) {
-                alert('❌ Clique em um campo de texto!');
-                return;
-            }
-
-            document.removeEventListener('click', handlerClique);
-
-            const texto = prompt('📝 2️⃣ Cole ou digite o texto:');
-            if (!texto || texto.trim() === '') {
-                alert('❌ Texto vazio!');
-                return;
-            }
-
-            elementoAlvo = elemento;
-            textoCompleto = texto;
-            indiceAtual = 0;
-            digitando = true;
-
-            // Limpa o campo
-            if (elemento.tagName === 'INPUT' || elemento.tagName === 'TEXTAREA') {
-                elemento.value = '';
-                elemento.dispatchEvent(new Event('input', { bubbles: true }));
-                elemento.dispatchEvent(new Event('change', { bubbles: true }));
-            } else if (elemento.isContentEditable) {
-                elemento.innerHTML = '';
-            }
-
-            elemento.focus();
-            
-            // Força o cursor no início
-            try {
-                if (elemento.tagName === 'INPUT' || elemento.tagName === 'TEXTAREA') {
-                    elemento.setSelectionRange(0, 0);
-                }
-            } catch(e) {}
-
-            alert('🚀 Digitando... (não mexa no campo)');
-            
-            // Inicia o monitoramento
-            const monitorInterval = setInterval(() => {
-                if (!digitando) {
-                    clearInterval(monitorInterval);
-                    return;
-                }
-                monitorarCampo();
-            }, 1000);
-
-            // Armazena o interval para limpar depois
-            window._monitorInterval = monitorInterval;
-
-            // Começa a digitar
-            setTimeout(digitarProximo, 500);
-        };
-
-        document.addEventListener('click', handlerClique);
-
-        setTimeout(() => {
-            document.removeEventListener('click', handlerClique);
-        }, 30000);
-    }
-
-    function pararDigitacao() {
-        digitando = false;
-        if (timeoutId) {
-            clearTimeout(timeoutId);
-            timeoutId = null;
-        }
-        if (window._monitorInterval) {
-            clearInterval(window._monitorInterval);
-            window._monitorInterval = null;
-        }
-        alert('⏹ Digitação interrompida!');
-    }
-
-    // ============================================
-    // MÉTODO ALTERNATIVO - COM PAUSAS ESTRATÉGICAS
-    // ============================================
-    function digitarComPausas() {
-        iniciarDigitacao();
-    }
-
-    // ============================================
-    // ATALHOS
-    // ============================================
-    document.addEventListener('keydown', (e) => {
-        if (e.ctrlKey && e.shiftKey && e.key === 'I') {
-            e.preventDefault();
-            iniciarDigitacao();
-        }
-        if (e.ctrlKey && e.shiftKey && e.key === 'P') {
-            e.preventDefault();
-            pararDigitacao();
-        }
-    });
-
-    window.autoTyper = {
-        iniciar: iniciarDigitacao,
-        parar: pararDigitacao,
-        start: iniciarDigitacao,
-        stop: pararDigitacao,
-        pausado: false
+    // ---- Estado global ----
+    window[NS] = {
+        aguardandoCampo: false,
+        listenerInstalado: false,
+        onDocClick: null,
+        typingTimeoutId: null,
+        paused: false,
+        currentElement: null,
+        currentText: '',
+        currentIndex: 0,
+        currentSpeed: 40
     };
 
-    console.log('🤖 Auto Digitador - Redação Paraná');
-    console.log('📝 Comandos: autoTyper.iniciar() | autoTyper.parar()');
-    console.log('⌨️ Atalhos: Ctrl+Shift+I (iniciar) | Ctrl+Shift+P (parar)');
-    console.log('⚠️ Não mexa no campo durante a digitação!');
-
-    setTimeout(() => {
-        if (confirm('🤖 Auto Digitador carregado!\n\n⚠️ Não mexa no campo durante a digitação!\n\nIniciar agora?')) {
-            iniciarDigitacao();
+    // ---- Listener único de clique ----
+    function ensureListenerInstalled() {
+        if (window[NS].listenerInstalado && window[NS].onDocClick) {
+            document.removeEventListener('click', window[NS].onDocClick, true);
+            window[NS].listenerInstalado = false;
         }
-    }, 500);
+
+        const onDocClick = (e) => {
+            if (!window[NS].aguardandoCampo) return;
+
+            const path = e.composedPath ? e.composedPath() : [];
+            if (path.some(n => n && n.id && String(n.id).startsWith('digitadorV2-'))) return;
+
+            e.preventDefault();
+            e.stopPropagation();
+            e.stopImmediatePropagation();
+
+            window[NS].aguardandoCampo = false;
+
+            const el = e.target;
+            if (!(el && (el.isContentEditable || el.tagName === 'INPUT' || el.tagName === 'TEXTAREA'))) {
+                alert('❌ Esse não é um campo válido.');
+                return;
+            }
+
+            const texto = prompt('📋 Cole ou digite o texto:');
+            if (texto == null) return;
+
+            // Pergunta a velocidade
+            const vel = prompt(
+                '⚡ Velocidade (ms entre caracteres):\n\n' +
+                '10 - Muito Rápido\n' +
+                '20 - Rápido\n' +
+                '40 - Normal (padrão)\n' +
+                '60 - Devagar\n' +
+                '100 - Muito Devagar\n' +
+                'humana - Velocidade Humana\n\n' +
+                'Digite o valor:',
+                '40'
+            );
+
+            const velocidade = vel || '40';
+            iniciarDigitacao(el, texto, velocidade);
+        };
+
+        window[NS].onDocClick = onDocClick;
+        document.addEventListener('click', onDocClick, true);
+        window[NS].listenerInstalado = true;
+    }
+
+    // ---- API pública ----
+    window.iniciarModV2 = function() {
+        ensureListenerInstalled();
+        window[NS].aguardandoCampo = true;
+        alert('✍️ Clique no campo onde deseja digitar o texto.');
+    };
+
+    // ===============================
+    // FUNÇÕES DE INSERÇÃO DE CARACTERES
+    // ===============================
+    function inserirCharEmInput(el, ch) {
+        try {
+            let pos = typeof el.selectionStart === 'number' ? el.selectionStart : el.value.length;
+
+            if (typeof el.setRangeText === 'function') {
+                el.setRangeText(ch, pos, pos, 'end');
+            } else {
+                const v = el.value || '';
+                const before = v.slice(0, pos);
+                const after = v.slice(pos);
+                el.value = before + ch + after;
+                const newPos = pos + ch.length;
+                try { el.setSelectionRange(newPos, newPos); } catch (_) {}
+            }
+        } catch (err) {
+            el.value = (el.value || '') + ch;
+        }
+    }
+
+    function inserirCharEmContentEditable(el, ch) {
+        try {
+            const doc = el.ownerDocument || document;
+            const sel = doc.getSelection ? doc.getSelection() : null;
+            let range;
+            if (sel && sel.rangeCount) {
+                range = sel.getRangeAt(0).cloneRange();
+                if (!el.contains(range.commonAncestorContainer)) {
+                    range = null;
+                }
+            }
+            if (!range) {
+                range = doc.createRange();
+                range.selectNodeContents(el);
+                range.collapse(false);
+            }
+            const txtNode = doc.createTextNode(ch);
+            range.insertNode(txtNode);
+            range.setStartAfter(txtNode);
+            range.collapse(true);
+            if (sel) {
+                sel.removeAllRanges();
+                sel.addRange(range);
+            }
+        } catch (err) {
+            el.innerText = (el.innerText || '') + ch;
+        }
+    }
+
+    // ===============================
+    // FUNÇÃO PRINCIPAL DE DIGITAÇÃO
+    // ===============================
+    function iniciarDigitacao(el, texto, velocidade) {
+        // Limpa timeout anterior
+        if (window[NS].typingTimeoutId) {
+            clearTimeout(window[NS].typingTimeoutId);
+            window[NS].typingTimeoutId = null;
+        }
+
+        // Salva estado
+        window[NS].currentElement = el;
+        window[NS].currentText = texto;
+        window[NS].currentIndex = 0;
+        window[NS].currentSpeed = velocidade;
+
+        const isInputEl = (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA');
+        const isContentEditable = !!el.isContentEditable;
+
+        // Prepara o campo
+        let prevReadOnly = null;
+        try {
+            if (isInputEl) {
+                prevReadOnly = el.readOnly;
+                el.readOnly = true;
+                try { el.focus({ preventScroll: true }); } catch (_) { try { el.focus(); } catch (_) {} }
+                try {
+                    const len = el.value ? el.value.length : 0;
+                    el.setSelectionRange(len, len);
+                } catch (_) {}
+            }
+        } catch (_) {}
+
+        let i = 0;
+
+        function obterProximoIntervalo() {
+            if (velocidade === 'humana') {
+                if (i > 0 && Math.random() < 0.05) {
+                    return 500 + Math.random() * 1000;
+                }
+                return 100 + Math.random() * 200;
+            } else {
+                return parseInt(velocidade, 10) || 40;
+            }
+        }
+
+        function digitarProximoCaractere() {
+            if (window[NS].paused) return;
+
+            if (i < texto.length) {
+                const c = texto[i++];
+
+                // Insere o caractere
+                if (isInputEl) {
+                    inserirCharEmInput(el, c);
+                } else if (isContentEditable) {
+                    inserirCharEmContentEditable(el, c);
+                } else {
+                    try {
+                        el.innerText = (el.innerText || '') + c;
+                    } catch (_) {}
+                }
+
+                // Dispara eventos
+                try { el.dispatchEvent(new Event('input', { bubbles: true })); } catch (_) {}
+                if (i % 25 === 0) {
+                    try { el.dispatchEvent(new Event('input', { bubbles: true })); } catch (_) {}
+                }
+
+                window[NS].currentIndex = i;
+                window[NS].typingTimeoutId = setTimeout(digitarProximoCaractere, obterProximoIntervalo());
+            } else {
+                // Finalização
+                window[NS].typingTimeoutId = null;
+
+                try {
+                    if (isInputEl) {
+                        try { el.blur(); } catch (_) {}
+                        if (prevReadOnly !== null && typeof prevReadOnly !== 'undefined') {
+                            try { el.readOnly = prevReadOnly; } catch (_) {}
+                        } else {
+                            try { el.readOnly = false; } catch (_) {}
+                        }
+                    }
+                } catch (_) {}
+
+                try { el.dispatchEvent(new Event('input', { bubbles: true })); } catch (_) {}
+                try { el.dispatchEvent(new Event('change', { bubbles: true })); } catch (_) {}
+
+                alert('✅ Digitação concluída!');
+            }
+        }
+
+        // Inicia
+        alert('🚀 Digitando...');
+        window[NS].typingTimeoutId = setTimeout(digitarProximoCaractere, obterProximoIntervalo());
+    }
+
+    // ---- Início imediato ----
+    window.iniciarModV2();
 
 })();
