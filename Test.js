@@ -1,4 +1,4 @@
-// Auto Digitador - Versão Simples (sem interface)
+// Auto Digitador - Versão com eventos completos
 (function() {
     'use strict';
 
@@ -14,9 +14,94 @@
         delayBetweenWords: 200
     };
 
+    // Função para simular digitação real com eventos
+    function simulateTyping(element, char) {
+        // Cria eventos de teclado completos
+        const events = [
+            new KeyboardEvent('keydown', { 
+                key: char, 
+                bubbles: true, 
+                cancelable: true,
+                composed: true
+            }),
+            new KeyboardEvent('keypress', { 
+                key: char, 
+                bubbles: true, 
+                cancelable: true,
+                composed: true
+            })
+        ];
+
+        // Dispara eventos de teclado
+        events.forEach(event => {
+            element.dispatchEvent(event);
+        });
+
+        // Insere o caractere
+        if (element.tagName === 'INPUT' || element.tagName === 'TEXTAREA') {
+            const start = element.selectionStart || 0;
+            const end = element.selectionEnd || 0;
+            const value = element.value || '';
+            
+            // Insere o caractere na posição do cursor
+            element.value = value.substring(0, start) + char + value.substring(end);
+            
+            // Atualiza posição do cursor
+            const newPos = start + 1;
+            element.setSelectionRange(newPos, newPos);
+            
+        } else if (element.isContentEditable) {
+            // Para contenteditable
+            const selection = window.getSelection();
+            if (selection.rangeCount > 0) {
+                const range = selection.getRangeAt(0);
+                const textNode = document.createTextNode(char);
+                range.insertNode(textNode);
+                range.setStartAfter(textNode);
+                range.collapse(true);
+                selection.removeAllRanges();
+                selection.addRange(range);
+            }
+        }
+
+        // Dispara eventos de input e change (CRUCIAIS para frameworks)
+        const inputEvent = new Event('input', { 
+            bubbles: true, 
+            cancelable: true,
+            composed: true 
+        });
+        element.dispatchEvent(inputEvent);
+
+        const changeEvent = new Event('change', { 
+            bubbles: true, 
+            cancelable: true,
+            composed: true 
+        });
+        element.dispatchEvent(changeEvent);
+
+        // Para React/Vue, dispara evento específico
+        if (element._reactInternalInstance || element.__reactInternalInstance) {
+            // React
+            const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
+                window.HTMLInputElement.prototype, 
+                'value'
+            )?.set;
+            if (nativeInputValueSetter) {
+                nativeInputValueSetter.call(element, element.value);
+            }
+        }
+
+        // Dispara evento de composição para alguns frameworks
+        const compositionEvent = new CompositionEvent('compositionupdate', {
+            bubbles: true,
+            cancelable: true,
+            data: char
+        });
+        element.dispatchEvent(compositionEvent);
+    }
+
     // Função principal
     function startAutoTyper() {
-        // Verifica se já está rodando
         if (isRunning) {
             const continuar = confirm('⚠️ Já existe uma digitação em andamento. Deseja parar e começar novamente?');
             if (continuar) {
@@ -26,14 +111,11 @@
             }
         }
 
-        // Pede para o usuário clicar no campo
         alert('📌 CLIQUE no campo de texto onde deseja digitar e depois pressione OK');
 
-        // Aguarda o clique do usuário
         const clickHandler = function(e) {
             targetElement = e.target;
             
-            // Verifica se é um campo de texto válido
             const isValid = targetElement.tagName === 'INPUT' || 
                            targetElement.tagName === 'TEXTAREA' || 
                            targetElement.isContentEditable;
@@ -43,10 +125,8 @@
                 return;
             }
 
-            // Remove o listener
             document.removeEventListener('click', clickHandler);
             
-            // Pede o texto
             const texto = prompt('📝 Cole ou digite o texto que deseja auto digitar:');
             
             if (!texto || texto.trim() === '') {
@@ -54,7 +134,6 @@
                 return;
             }
 
-            // Pede a velocidade
             const velocidade = prompt('⚡ Escolha a velocidade de digitação:\n\n' +
                                     '1 - Muito Rápida (10ms)\n' +
                                     '2 - Rápida (30ms)\n' +
@@ -63,7 +142,6 @@
                                     '5 - Muito Lenta (200ms)\n\n' +
                                     'Digite o número (1-5):', '3');
 
-            // Configura a velocidade
             const speedMap = {
                 '1': { chars: 10, words: 40 },
                 '2': { chars: 30, words: 120 },
@@ -76,41 +154,42 @@
             config.delayBetweenChars = selectedSpeed.chars;
             config.delayBetweenWords = selectedSpeed.words;
 
-            // Inicia a digitação
             fullText = texto;
             currentIndex = 0;
             isRunning = true;
             
-            // Foca no elemento
             targetElement.focus();
             
-            // Limpa o campo se tiver conteúdo
+            // Limpa o campo
             if (targetElement.tagName === 'INPUT' || targetElement.tagName === 'TEXTAREA') {
                 targetElement.value = '';
+                // Dispara eventos de limpeza
+                targetElement.dispatchEvent(new Event('input', { bubbles: true }));
+                targetElement.dispatchEvent(new Event('change', { bubbles: true }));
             } else if (targetElement.isContentEditable) {
                 targetElement.innerHTML = '';
             }
 
-            // Mostra notificação de início
             showNotification('🚀 Iniciando digitação automática...', 'info');
-            
-            // Começa a digitar
             typeNextChar();
         };
 
-        // Adiciona o listener para capturar o clique
         document.addEventListener('click', clickHandler);
         
-        // Timeout para remover o listener se o usuário não clicar
         setTimeout(() => {
             document.removeEventListener('click', clickHandler);
         }, 30000);
     }
 
-    // Função para digitar o próximo caractere
+    // Função para digitar o próximo caractere com eventos completos
     function typeNextChar() {
         if (!isRunning || currentIndex >= fullText.length) {
             if (currentIndex >= fullText.length) {
+                // Dispara evento de finalização
+                if (targetElement) {
+                    targetElement.dispatchEvent(new Event('blur', { bubbles: true }));
+                    targetElement.dispatchEvent(new Event('focusout', { bubbles: true }));
+                }
                 showNotification('✅ Digitação concluída com sucesso!', 'success');
                 isRunning = false;
             }
@@ -124,48 +203,21 @@
         }
 
         const char = fullText[currentIndex];
-        const remaining = fullText.length - currentIndex - 1;
         const progress = Math.round(((currentIndex) / fullText.length) * 100);
 
-        // Atualiza a notificação a cada 10%
         if (progress % 10 === 0 || currentIndex === 0) {
-            showNotification(`📊 Progresso: ${progress}% (${currentIndex}/${fullText.length} caracteres)`, 'progress');
+            showNotification(`📊 Progresso: ${progress}% (${currentIndex}/${fullText.length})`, 'progress');
         }
 
-        // Insere o caractere no campo
         try {
-            if (targetElement.tagName === 'INPUT' || targetElement.tagName === 'TEXTAREA') {
-                const currentValue = targetElement.value || '';
-                const cursorPos = targetElement.selectionStart || 0;
-                
-                if (char === '\n') {
-                    targetElement.value = currentValue.slice(0, cursorPos) + '\n' + currentValue.slice(cursorPos);
-                } else {
-                    targetElement.value = currentValue.slice(0, cursorPos) + char + currentValue.slice(cursorPos);
-                }
-                
-                const newPos = cursorPos + 1;
-                targetElement.setSelectionRange(newPos, newPos);
-            } else if (targetElement.isContentEditable) {
-                // Para elementos contenteditable
-                const selection = window.getSelection();
-                const range = selection.getRangeAt(0);
-                const textNode = document.createTextNode(char);
-                range.insertNode(textNode);
-                range.setStartAfter(textNode);
-                range.collapse(true);
-                selection.removeAllRanges();
-                selection.addRange(range);
-            }
+            // Usa a função melhorada de simulação
+            simulateTyping(targetElement, char);
         } catch (e) {
+            console.error('Erro ao digitar:', e);
             showNotification('❌ Erro ao digitar caractere!', 'error');
             isRunning = false;
             return;
         }
-
-        // Dispara eventos
-        targetElement.dispatchEvent(new Event('input', { bubbles: true }));
-        targetElement.dispatchEvent(new Event('change', { bubbles: true }));
 
         // Calcula o delay
         let delay = config.delayBetweenChars;
@@ -175,23 +227,22 @@
             delay = config.delayBetweenChars + 100;
         }
 
-        // Adiciona pequena variação
+        // Adiciona variação aleatória
         delay += Math.random() * 20 - 10;
 
         currentIndex++;
 
-        // Agenda o próximo caractere
         currentTimeout = setTimeout(typeNextChar, Math.max(10, delay));
     }
 
-    // Função para parar a digitação
+    // Função para parar
     function stopTyping() {
         isRunning = false;
         if (currentTimeout) {
             clearTimeout(currentTimeout);
             currentTimeout = null;
         }
-        showNotification('⏹ Digitação interrompida pelo usuário', 'warning');
+        showNotification('⏹ Digitação interrompida', 'warning');
     }
 
     // Função para mostrar notificações
@@ -204,40 +255,46 @@
             progress: '📊'
         };
 
-        // Tenta usar Notification API se disponível
         if ('Notification' in window && Notification.permission === 'granted') {
             new Notification('Auto Digitador', {
                 body: message,
                 icon: icons[type] || '🤖'
             });
         } else {
-            // Fallback para alert
             console.log(`${icons[type] || '🤖'} ${message}`);
-            
-            // Mostra apenas os mais importantes como alert
             if (type === 'error' || type === 'success' || type === 'warning') {
                 alert(message);
             }
         }
     }
 
-    // Função para mostrar ajuda
+    // Função para detectar o framework do site
+    function detectFramework() {
+        const frameworks = [];
+        if (window.React) frameworks.push('React');
+        if (window.Vue) frameworks.push('Vue');
+        if (window.angular) frameworks.push('Angular');
+        if (window.jQuery) frameworks.push('jQuery');
+        if (frameworks.length > 0) {
+            console.log(`🔍 Frameworks detectados: ${frameworks.join(', ')}`);
+        }
+        return frameworks;
+    }
+
+    // Função de ajuda
     function showHelp() {
         alert(
             '🤖 AUTO DIGITADOR - Ajuda\n\n' +
-            'Comandos disponíveis:\n' +
-            '• Digite "iniciar" - Inicia o auto digitador\n' +
-            '• Digite "parar" - Para a digitação\n' +
-            '• Digite "ajuda" - Mostra esta mensagem\n\n' +
-            'Como usar:\n' +
-            '1. Digite "iniciar" no console\n' +
-            '2. Clique no campo de texto\n' +
-            '3. Cole o texto no prompt\n' +
-            '4. Escolha a velocidade\n' +
-            '5. Acompanhe o progresso nas notificações\n\n' +
+            'Comandos:\n' +
+            '• autoTyper.iniciar() - Inicia a digitação\n' +
+            '• autoTyper.parar() - Para a digitação\n' +
+            '• autoTyper.ajuda() - Mostra esta mensagem\n\n' +
             'Atalhos:\n' +
-            '• Ctrl+Shift+I - Iniciar digitação\n' +
-            '• Ctrl+Shift+P - Parar digitação'
+            '• Ctrl+Shift+I - Iniciar\n' +
+            '• Ctrl+Shift+P - Parar\n\n' +
+            '⚠️ Para sites com React/Vue/Angular:\n' +
+            'O script agora dispara todos os eventos necessários\n' +
+            'para que os frameworks detectem as mudanças!'
         );
     }
 
@@ -258,6 +315,11 @@
         Notification.requestPermission();
     }
 
+    // Detecta frameworks ao carregar
+    setTimeout(() => {
+        detectFramework();
+    }, 500);
+
     // Comandos via console
     window.autoTyper = {
         iniciar: startAutoTyper,
@@ -265,23 +327,25 @@
         parar: stopTyping,
         stop: stopTyping,
         ajuda: showHelp,
-        help: showHelp
+        help: showHelp,
+        detectarFramework: detectFramework
     };
 
-    // Mensagem inicial
-    console.log('🤖 Auto Digitador carregado!');
-    console.log('📝 Comandos disponíveis:');
-    console.log('  autoTyper.iniciar()  - Inicia a digitação');
-    console.log('  autoTyper.parar()    - Para a digitação');
-    console.log('  autoTyper.ajuda()    - Mostra ajuda');
+    console.log('🤖 Auto Digitador V2 carregado!');
+    console.log('📝 Comandos: autoTyper.iniciar() | autoTyper.parar() | autoTyper.ajuda()');
     console.log('⌨️ Atalhos: Ctrl+Shift+I (iniciar) | Ctrl+Shift+P (parar)');
+    console.log('🔍 Detectando frameworks automaticamente...');
 
     // Mensagem de boas-vindas
     setTimeout(() => {
         const usar = confirm(
-            '🤖 Auto Digitador carregado!\n\n' +
-            'Deseja iniciar agora?\n' +
-            '(Clique em "OK" para iniciar ou "Cancelar" para usar depois)'
+            '🤖 Auto Digitador V2 carregado!\n\n' +
+            'Melhorias:\n' +
+            '✅ Eventos completos de teclado (keydown, keypress)\n' +
+            '✅ Suporte para React, Vue, Angular\n' +
+            '✅ Eventos de input, change e composition\n' +
+            '✅ Detecção automática de frameworks\n\n' +
+            'Deseja iniciar agora?'
         );
         if (usar) {
             startAutoTyper();
