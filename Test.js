@@ -52,12 +52,12 @@
 
             const el = e.target;
             if (!(el && (el.isContentEditable || el.tagName === 'INPUT' || el.tagName === 'TEXTAREA'))) {
-                alert('❌ Esse não é um campo válido. Clique em um INPUT ou TEXTAREA.');
+                alert('Esse não é um campo válido. Clique em um INPUT ou TEXTAREA.');
                 return;
             }
 
             // Pergunta o texto baseado no modo
-            let mensagem = '📋 Cole ou digite o texto para ' + window[NS].modo + ':';
+            let mensagem = 'Cole ou digite o texto para ' + window[NS].modo + ':';
             const texto = prompt(mensagem);
             if (texto == null) return;
 
@@ -266,19 +266,19 @@
 
                 // Verifica se é o título ou redação
                 if (window[NS].modo === 'titulo') {
-                    alert('✅ Título digitado com sucesso!');
+                    //alert('✅ Título digitado com sucesso!');
                     // Chama o próximo passo: redação
                     iniciarModoRedacao();
                 } else if (window[NS].modo === 'redacao') {
-                    alert('✅ Redação digitada com sucesso!');
+                    //alert('✅ Redação digitada com sucesso!');
                     // Procura e clica no botão salvar
                     setTimeout(function() {
                         const botao = encontrarBotaoSalvar();
                         if (botao) {
                             botao.click();
-                            alert('✅ Botão Salvar clicado com sucesso!');
+                           // alert('✅ Botão Salvar clicado com sucesso!');
                         } else {
-                            alert('⚠️ Botão Salvar não encontrado! Clique manualmente.');
+                            alert('Botão Salvar não encontrado! Clique manualmente.');
                         }
                     }, 500);
                 }
@@ -286,7 +286,7 @@
         }
 
         // Inicia
-        alert('🚀 Digitando...');
+        //alert('🚀 Digitando...');
         window[NS].typingTimeoutId = setTimeout(digitarProximoCaractere, obterProximoIntervalo());
     }
 
@@ -298,7 +298,7 @@
         window[NS].currentSpeed = velocidade;
         ensureListenerInstalled();
         window[NS].aguardandoCampo = true;
-        alert('✍️ Clique no campo de TÍTULO onde deseja digitar.');
+        alert('Clique no campo de TÍTULO onde deseja digitar.');
     }
 
     // ===============================
@@ -307,7 +307,7 @@
     function iniciarModoRedacao() {
         window[NS].modo = 'redacao';
         window[NS].aguardandoCampo = true;
-        alert('✍️ Clique no campo de REDAÇÃO onde deseja digitar.');
+        alert('Clique no campo de REDAÇÃO onde deseja digitar.');
     }
 
     // ===============================
@@ -315,7 +315,7 @@
     // ===============================
     function escolherVelocidade() {
         const opcao = prompt(
-            '⚡ ESCOLHA A VELOCIDADE:\n\n' +
+            'ESCOLHA A VELOCIDADE:\n\n' +
             '1 - Instantâneo (1ms)\n' +
             '2 - Muito Rápido (10ms)\n' +
             '3 - Normal (40ms)\n' +
@@ -327,7 +327,7 @@
         );
 
         const velocidades = {
-            '1': '1',
+            '1': '0,05',
             '2': '10',
             '3': '40',
             '4': '70',
@@ -337,7 +337,7 @@
 
         const vel = velocidades[opcao];
         if (!vel) {
-            alert('❌ Opção inválida! Usando velocidade Normal (40ms).');
+            alert('Opção inválida! Usando velocidade Normal (40ms).');
             return '40';
         }
         return vel;
