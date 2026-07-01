@@ -6,8 +6,8 @@
     // LISTA DE API KEYS (IGUAL AO QUIZIZZ)
     // ============================================
     const GEMINI_API_KEYS = [
-        "SUA_API_KEY_1",
-        "SUA_API_KEY_2", 
+        "AQ.Ab8RN6IpJib85YU_qPAJsRrqW3z85vdVgTTnn64zKfoDwVWp0A",
+        "AQ.Ab8RN6JxltVwQISLYQvpUL4vjZO8LoVSwzbOl6V4tlRBytoMew", 
         "SUA_API_KEY_3",
         "SUA_API_KEY_4",
         "SUA_API_KEY_5"
