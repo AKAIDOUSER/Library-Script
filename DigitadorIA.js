@@ -1,16 +1,11 @@
-// AUTO DIGITADOR COM GEMINI - MÚLTIPLAS API KEYS
+// AUTO DIGITADOR COM GEMINI - CORRIGIDO (TEMA CORRETO)
 (function() {
     'use strict';
 
-    // ============================================
-    // LISTA DE API KEYS (IGUAL AO QUIZIZZ)
-    // ============================================
     const GEMINI_API_KEYS = [
-        "AQ.Ab8RN6IpJib85YU_qPAJsRrqW3z85vdVgTTnn64zKfoDwVWp0A",
-        "AQ.Ab8RN6JxltVwQISLYQvpUL4vjZO8LoVSwzbOl6V4tlRBytoMew", 
-        "SUA_API_KEY_3",
-        "SUA_API_KEY_4",
-        "SUA_API_KEY_5"
+        "AQ.Ab8RN6JxltVwQISLYQvpUL4vjZO8LoVSwzbOl6V4tlRBytoMew",
+        "AQ.Ab8RN6IpJib85YU_qPAJsRrqW3z85vdVgTTnn64zKfoDwVWp0A", 
+        "SUA_API_KEY_3"
     ];
     
     let currentApiKeyIndex = 0;
@@ -21,13 +16,9 @@
         API_ENDPOINT: 'https://generativelanguage.googleapis.com/v1beta/models',
         CLASSE_TEMA: 'MuiTypography-root MuiTypography-body2 css-k1sw4y',
         DELAY_SALVAR: 500,
-        DELAY_COLAGEM: 200,
         VELOCIDADE_PADRAO: '10'
     };
 
-    // ============================================
-    // LIMPEZA
-    // ============================================
     function limparInstanciaAnterior() {
         const state = window[CONFIG.NAMESPACE];
         if (!state) return;
@@ -64,49 +55,59 @@
     window[CONFIG.NAMESPACE] = STATE;
 
     // ============================================
-    // COLEÇÃO
-    // ============================================
-    const pasteHandler = (e) => {
-        e.stopImmediatePropagation();
-        return true;
-    };
-
-    function liberarColagem() {
-        document.addEventListener('paste', pasteHandler, true);
-        STATE.pasteHandler = pasteHandler;
-    }
-
-    function bloquearColagem() {
-        if (STATE.pasteHandler) {
-            document.removeEventListener('paste', STATE.pasteHandler, true);
-            STATE.pasteHandler = null;
-        }
-    }
-
-    // ============================================
-    // EXTRAIR TEMA
+    // EXTRAIR TEMA CORRETO
     // ============================================
     function extrairTemaRedacao() {
-        const elementoEspecifico = document.querySelector('.MuiTypography-root.MuiTypography-body2.css-k1sw4y');
-        if (elementoEspecifico) {
-            const texto = elementoEspecifico.textContent || '';
-            const match = texto.match(/(?:TEMA|Tema|tema)\s*:?\s*(.+)/i);
-            return match ? match[1].trim() : texto.trim();
-        }
-        const elementos = document.querySelectorAll('p.MuiTypography-root.MuiTypography-body2');
-        for (const el of elementos) {
-            const texto = el.textContent || '';
-            if (/tema/i.test(texto)) {
-                const match = texto.match(/(?:TEMA|Tema|tema)\s*:?\s*(.+)/i);
-                return match ? match[1].trim() : texto.trim();
+        // Pega TODOS os elementos com a classe
+        const elementos = document.querySelectorAll('p.' + CONFIG.CLASSE_TEMA.replace(/ /g, '.'));
+        
+        console.log('🔍 Elementos encontrados:', elementos.length);
+        
+        // Array para armazenar os textos
+        const textos = [];
+        
+        elementos.forEach((el, index) => {
+            const texto = el.textContent.trim();
+            console.log(`📄 Elemento ${index}: "${texto}"`);
+            textos.push(texto);
+        });
+        
+        // ESTRATÉGIA: Pula tokens e IDs
+        // Um token/ID geralmente tem padrão hexadecimal (7FB42F63-647)
+        // O tema real é um texto descritivo
+        
+        for (const texto of textos) {
+            // Pula se for muito curto (token)
+            if (texto.length < 10) continue;
+            
+            // Pula se parece um token/ID (hexadecimal)
+            if (/^[A-F0-9-]+$/i.test(texto) && texto.length < 40) {
+                console.log('⏭️ Pulando token:', texto);
+                continue;
             }
+            
+            // Pula se contém "TEMA:" (é o label, não o tema)
+            if (texto.toUpperCase().startsWith('TEMA')) continue;
+            
+            // Se chegou aqui, é provavelmente o tema
+            console.log('✅ Tema encontrado:', texto);
+            return texto;
         }
+        
+        // Fallback: pega o texto mais longo que não seja token
+        const textoMaisLongo = textos
+            .filter(t => t.length > 20 && !/^[A-F0-9-]+$/i.test(t))
+            .sort((a, b) => b.length - a.length)[0];
+        
+        if (textoMaisLongo) {
+            console.log('✅ Tema (fallback):', textoMaisLongo);
+            return textoMaisLongo;
+        }
+        
+        console.error('❌ Nenhum tema válido encontrado!');
         return null;
     }
 
-    // ============================================
-    // FETCH COM TIMEOUT (IGUAL AO QUIZIZZ)
-    // ============================================
     async function fetchWithTimeout(resource, options = {}, timeout = 15000) {
         const controller = new AbortController();
         const id = setTimeout(() => controller.abort(), timeout);
@@ -116,39 +117,32 @@
             return response;
         } catch (error) {
             clearTimeout(id);
-            if (error.name === 'AbortError') {
-                throw new Error('Timeout: requisição cancelada.');
-            }
+            if (error.name === 'AbortError') throw new Error('Timeout');
             throw error;
         }
     }
 
-    // ============================================
-    // GERAR REDAÇÃO COM MÚLTIPLAS CHAVES
-    // ============================================
     async function gerarRedacaoComGemini(tema) {
-        const prompt = `Escreva uma redação dissertativa-argumentativa completa sobre o tema: "${tema}". 
+        const prompt = `Você é um professor de redação. Escreva uma redação dissertativa-argumentativa completa sobre o tema: "${tema}".
         
-Requisitos:
-- Título criativo e relevante
-- Introdução com tese clara
-- 2-3 parágrafos de desenvolvimento
+Instruções:
+- Crie um título criativo e relevante ao tema
+- Faça uma introdução com tese clara
+- Desenvolva em 2-3 parágrafos com argumentos
 - Conclusão com proposta de intervenção
-- Entre 20-30 linhas
-- Linguagem formal e culta
+- Use linguagem formal e culta
+- A redação deve ter entre 20-30 linhas
 
-Responda EXATAMENTE neste formato:
-TÍTULO: [título]
-REDAÇÃO: [texto completo]`;
+IMPORTANTE: Responda EXATAMENTE neste formato:
+TÍTULO: [título da redação]
+REDAÇÃO: [texto completo da redação]`;
 
         let aiResponseText = null;
         let todasFalharam = true;
 
-        // Tenta cada chave da lista
         for (let i = 0; i < GEMINI_API_KEYS.length; i++) {
             const currentKey = GEMINI_API_KEYS[currentApiKeyIndex];
             
-            // Pula placeholders
             if (!currentKey || currentKey.includes("SUA_") || currentKey.length < 30) {
                 console.warn(`⏭️ Chave #${currentApiKeyIndex + 1} é placeholder. Pulando...`);
                 currentApiKeyIndex = (currentApiKeyIndex + 1) % GEMINI_API_KEYS.length;
@@ -180,23 +174,20 @@ REDAÇÃO: [texto completo]`;
                 }
 
                 const errorData = await response.json();
-                const errorMessage = errorData.error?.message || `HTTP ${response.status}`;
-                console.warn(`❌ Chave #${currentApiKeyIndex + 1} falhou: ${errorMessage}`);
+                console.warn(`❌ Chave #${currentApiKeyIndex + 1} falhou: ${errorData.error?.message || 'Erro'}`);
 
             } catch (error) {
                 console.warn(`❌ Erro na chave #${currentApiKeyIndex + 1}: ${error.message}`);
             }
 
-            // Próxima chave
             currentApiKeyIndex = (currentApiKeyIndex + 1) % GEMINI_API_KEYS.length;
         }
 
         if (todasFalharam || !aiResponseText) {
-            alert('❌ Todas as API Keys falharam! Verifique suas chaves.');
+            alert('❌ Todas as API Keys falharam!');
             return null;
         }
 
-        // Extrai título e redação
         const tituloMatch = aiResponseText.match(/TÍTULO:\s*(.+?)(?:\n|$)/);
         const redacaoMatch = aiResponseText.match(/REDAÇÃO:\s*([\s\S]+)/);
         
@@ -209,14 +200,11 @@ REDAÇÃO: [texto completo]`;
         
         const linhas = aiResponseText.split('\n').filter(l => l.trim());
         return {
-            titulo: linhas[0].replace(/^#+\s*/, '').replace('TÍTULO:', '').trim(),
+            titulo: linhas[0].replace('TÍTULO:', '').trim(),
             redacao: linhas.slice(1).join('\n').replace('REDAÇÃO:', '').trim()
         };
     }
 
-    // ============================================
-    // LISTENER DE CLIQUE
-    // ============================================
     function instalarListenerClique() {
         if (STATE.listenerInstalado && STATE.onDocClick) {
             document.removeEventListener('click', STATE.onDocClick, true);
@@ -253,9 +241,6 @@ REDAÇÃO: [texto completo]`;
         STATE.listenerInstalado = true;
     }
 
-    // ============================================
-    // INSERIR CARACTERES
-    // ============================================
     function inserirCharInput(el, ch) {
         try {
             const pos = typeof el.selectionStart === 'number' ? el.selectionStart : el.value.length;
@@ -298,9 +283,6 @@ REDAÇÃO: [texto completo]`;
         }
     }
 
-    // ============================================
-    // ENCONTRAR BOTÃO SALVAR
-    // ============================================
     function encontrarBotaoSalvar() {
         const seletores = [
             'button[type="submit"]',
@@ -308,8 +290,7 @@ REDAÇÃO: [texto completo]`;
             'button[class*="salvar"]',
             'button[class*="save"]',
             'button[class*="submit"]',
-            'button[class*="enviar"]',
-            'input[type="submit"]'
+            'button[class*="enviar"]'
         ];
         for (const seletor of seletores) {
             try {
@@ -317,17 +298,14 @@ REDAÇÃO: [texto completo]`;
                 if (el) return el;
             } catch (_) {}
         }
-        const botoes = document.querySelectorAll('button, input[type="submit"]');
+        const botoes = document.querySelectorAll('button');
         for (const btn of botoes) {
-            const texto = (btn.textContent || btn.value || '').toLowerCase();
-            if (/salvar|save|enviar|publicar|send|submit/.test(texto)) return btn;
+            const texto = (btn.textContent || '').toLowerCase();
+            if (/salvar|save|enviar|publicar/.test(texto)) return btn;
         }
         return null;
     }
 
-    // ============================================
-    // INSERIR TEXTO NO CAMPO
-    // ============================================
     function inserirTextoNoCampo(el, texto) {
         if (STATE.typingTimeoutId) {
             clearTimeout(STATE.typingTimeoutId);
@@ -366,7 +344,6 @@ REDAÇÃO: [texto completo]`;
                 else if (isContentEditable) inserirCharContentEditable(el, ch);
                 else try { el.innerText = (el.innerText || '') + ch; } catch (_) {}
                 try { el.dispatchEvent(new Event('input', { bubbles: true })); } catch (_) {}
-                if (i % 25 === 0) try { el.dispatchEvent(new Event('change', { bubbles: true })); } catch (_) {}
                 STATE.currentIndex = i;
                 STATE.typingTimeoutId = setTimeout(digitarProximo, getIntervalo());
             } else {
@@ -374,7 +351,7 @@ REDAÇÃO: [texto completo]`;
                 try {
                     if (isInputEl) {
                         el.blur();
-                        if (prevReadOnly !== null && prevReadOnly !== undefined) el.readOnly = prevReadOnly;
+                        if (prevReadOnly !== null) el.readOnly = prevReadOnly;
                         else el.readOnly = false;
                     }
                 } catch (_) {}
@@ -387,9 +364,6 @@ REDAÇÃO: [texto completo]`;
         STATE.typingTimeoutId = setTimeout(digitarProximo, getIntervalo());
     }
 
-    // ============================================
-    // CONTINUAR FLUXO
-    // ============================================
     function continuarFluxo() {
         if (STATE.modo === 'titulo') {
             STATE.modo = 'redacao';
@@ -400,29 +374,23 @@ REDAÇÃO: [texto completo]`;
                 const botao = encontrarBotaoSalvar();
                 if (botao) {
                     botao.click();
-                    console.log('✅ Botão Salvar clicado!');
+                    console.log('✅ Salvo!');
                 } else {
-                    alert('⚠️ Botão Salvar não encontrado! Clique manualmente.');
+                    alert('⚠️ Clique em Salvar manualmente.');
                 }
             }, CONFIG.DELAY_SALVAR);
         }
     }
 
-    // ============================================
-    // INICIAR
-    // ============================================
     async function iniciar() {
-        // Sempre usa velocidade 10ms
         STATE.currentSpeed = CONFIG.VELOCIDADE_PADRAO;
-        STATE.usarColagem = false;
 
         const tema = extrairTemaRedacao();
         if (!tema) {
-            alert('❌ Tema não encontrado!');
+            alert('❌ Tema não encontrado! Verifique o console (F12).');
             return;
         }
         
-        console.log('📝 Tema:', tema);
         alert('📝 Tema: "' + tema + '"\n\n🤖 Gerando redação...');
 
         const redacao = await gerarRedacaoComGemini(tema);
@@ -431,10 +399,7 @@ REDAÇÃO: [texto completo]`;
         STATE.tituloRedacao = redacao.titulo;
         STATE.textoRedacao = redacao.redacao;
 
-        console.log('✅ Título:', redacao.titulo);
-        console.log('✅ Redação gerada!');
-        
-        alert('✅ REDAÇÃO GERADA!\n\nTítulo: "' + redacao.titulo + '"\n\n🎯 Clique no campo de TÍTULO.');
+        alert('✅ Pronto!\n\n🎯 Clique no campo de TÍTULO.');
 
         STATE.modo = 'titulo';
         STATE.aguardandoCampo = true;
@@ -442,7 +407,7 @@ REDAÇÃO: [texto completo]`;
     }
 
     window.iniciarDigitadorV5 = iniciar;
-    console.log('🚀 Digitador IA V5 carregado!');
+    console.log('🚀 Digitador V5 carregado!');
     iniciar();
 
 })();
