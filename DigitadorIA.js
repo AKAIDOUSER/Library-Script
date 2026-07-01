@@ -1,16 +1,33 @@
-// AUTO DIGITADOR COM GEMINI - VERSÃO GRATUITA
+// AUTO DIGITADOR COM GEMINI - MÚLTIPLAS API KEYS
 (function() {
     'use strict';
 
+    // ============================================
+    // LISTA DE API KEYS (IGUAL AO QUIZIZZ)
+    // ============================================
+    const GEMINI_API_KEYS = [
+        "SUA_API_KEY_1",
+        "SUA_API_KEY_2", 
+        "SUA_API_KEY_3",
+        "SUA_API_KEY_4",
+        "SUA_API_KEY_5"
+    ];
+    
+    let currentApiKeyIndex = 0;
+
     const CONFIG = {
-        NAMESPACE: '__digitadorV4__',
+        NAMESPACE: '__digitadorV5__',
         MODELO_GEMINI: 'gemini-2.0-flash',
         API_ENDPOINT: 'https://generativelanguage.googleapis.com/v1beta/models',
         CLASSE_TEMA: 'MuiTypography-root MuiTypography-body2 css-k1sw4y',
         DELAY_SALVAR: 500,
-        DELAY_COLAGEM: 200
+        DELAY_COLAGEM: 200,
+        VELOCIDADE_PADRAO: '10'
     };
 
+    // ============================================
+    // LIMPEZA
+    // ============================================
     function limparInstanciaAnterior() {
         const state = window[CONFIG.NAMESPACE];
         if (!state) return;
@@ -36,17 +53,19 @@
         currentElement: null,
         currentText: '',
         currentIndex: 0,
-        currentSpeed: '40',
+        currentSpeed: CONFIG.VELOCIDADE_PADRAO,
         modo: 'titulo',
         pasteHandler: null,
         tituloRedacao: '',
         textoRedacao: '',
-        apiKey: '',
         usarColagem: false
     };
 
     window[CONFIG.NAMESPACE] = STATE;
 
+    // ============================================
+    // COLEÇÃO
+    // ============================================
     const pasteHandler = (e) => {
         e.stopImmediatePropagation();
         return true;
@@ -64,6 +83,9 @@
         }
     }
 
+    // ============================================
+    // EXTRAIR TEMA
+    // ============================================
     function extrairTemaRedacao() {
         const elementoEspecifico = document.querySelector('.MuiTypography-root.MuiTypography-body2.css-k1sw4y');
         if (elementoEspecifico) {
@@ -82,18 +104,31 @@
         return null;
     }
 
-    async function gerarRedacaoComGemini(tema) {
-        if (!STATE.apiKey) {
-            STATE.apiKey = prompt('🔑 Digite sua API Key do Gemini:');
-            if (!STATE.apiKey || !STATE.apiKey.trim()) {
-                alert('❌ API Key é necessária!');
-                return null;
+    // ============================================
+    // FETCH COM TIMEOUT (IGUAL AO QUIZIZZ)
+    // ============================================
+    async function fetchWithTimeout(resource, options = {}, timeout = 15000) {
+        const controller = new AbortController();
+        const id = setTimeout(() => controller.abort(), timeout);
+        try {
+            const response = await fetch(resource, { ...options, signal: controller.signal });
+            clearTimeout(id);
+            return response;
+        } catch (error) {
+            clearTimeout(id);
+            if (error.name === 'AbortError') {
+                throw new Error('Timeout: requisição cancelada.');
             }
-            STATE.apiKey = STATE.apiKey.trim();
+            throw error;
         }
+    }
 
+    // ============================================
+    // GERAR REDAÇÃO COM MÚLTIPLAS CHAVES
+    // ============================================
+    async function gerarRedacaoComGemini(tema) {
         const prompt = `Escreva uma redação dissertativa-argumentativa completa sobre o tema: "${tema}". 
-
+        
 Requisitos:
 - Título criativo e relevante
 - Introdução com tese clara
@@ -106,52 +141,82 @@ Responda EXATAMENTE neste formato:
 TÍTULO: [título]
 REDAÇÃO: [texto completo]`;
 
-        try {
-            const url = `${CONFIG.API_ENDPOINT}/${CONFIG.MODELO_GEMINI}:generateContent?key=${STATE.apiKey}`;
-            
-            const response = await fetch(url, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    contents: [{ parts: [{ text: prompt }] }]
-                })
-            });
+        let aiResponseText = null;
+        let todasFalharam = true;
 
-            if (!response.ok) {
+        // Tenta cada chave da lista
+        for (let i = 0; i < GEMINI_API_KEYS.length; i++) {
+            const currentKey = GEMINI_API_KEYS[currentApiKeyIndex];
+            
+            // Pula placeholders
+            if (!currentKey || currentKey.includes("SUA_") || currentKey.length < 30) {
+                console.warn(`⏭️ Chave #${currentApiKeyIndex + 1} é placeholder. Pulando...`);
+                currentApiKeyIndex = (currentApiKeyIndex + 1) % GEMINI_API_KEYS.length;
+                continue;
+            }
+
+            const url = `${CONFIG.API_ENDPOINT}/${CONFIG.MODELO_GEMINI}:generateContent?key=${currentKey}`;
+            
+            console.log(`🔑 Tentando chave #${currentApiKeyIndex + 1}...`);
+
+            try {
+                const response = await fetchWithTimeout(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        contents: [{ parts: [{ text: prompt }] }]
+                    })
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    
+                    if (data.candidates && data.candidates[0] && data.candidates[0].content) {
+                        aiResponseText = data.candidates[0].content.parts[0].text;
+                        console.log(`✅ Sucesso com chave #${currentApiKeyIndex + 1}!`);
+                        todasFalharam = false;
+                        break;
+                    }
+                }
+
                 const errorData = await response.json();
-                throw new Error(`HTTP ${response.status}: ${JSON.stringify(errorData)}`);
+                const errorMessage = errorData.error?.message || `HTTP ${response.status}`;
+                console.warn(`❌ Chave #${currentApiKeyIndex + 1} falhou: ${errorMessage}`);
+
+            } catch (error) {
+                console.warn(`❌ Erro na chave #${currentApiKeyIndex + 1}: ${error.message}`);
             }
 
-            const data = await response.json();
-            
-            if (!data.candidates || !data.candidates[0] || !data.candidates[0].content) {
-                throw new Error('Resposta da API sem conteúdo');
-            }
+            // Próxima chave
+            currentApiKeyIndex = (currentApiKeyIndex + 1) % GEMINI_API_KEYS.length;
+        }
 
-            const textoCompleto = data.candidates[0].content.parts[0].text;
-            const tituloMatch = textoCompleto.match(/TÍTULO:\s*(.+?)(?:\n|$)/);
-            const redacaoMatch = textoCompleto.match(/REDAÇÃO:\s*([\s\S]+)/);
-            
-            if (tituloMatch && redacaoMatch) {
-                return {
-                    titulo: tituloMatch[1].trim(),
-                    redacao: redacaoMatch[1].trim()
-                };
-            }
-            
-            const linhas = textoCompleto.split('\n').filter(l => l.trim());
-            return {
-                titulo: linhas[0].replace(/^#+\s*/, '').replace('TÍTULO:', '').trim(),
-                redacao: linhas.slice(1).join('\n').replace('REDAÇÃO:', '').trim()
-            };
-
-        } catch (error) {
-            console.error('Erro Gemini:', error);
-            alert('❌ Erro ao gerar redação: ' + error.message);
+        if (todasFalharam || !aiResponseText) {
+            alert('❌ Todas as API Keys falharam! Verifique suas chaves.');
             return null;
         }
+
+        // Extrai título e redação
+        const tituloMatch = aiResponseText.match(/TÍTULO:\s*(.+?)(?:\n|$)/);
+        const redacaoMatch = aiResponseText.match(/REDAÇÃO:\s*([\s\S]+)/);
+        
+        if (tituloMatch && redacaoMatch) {
+            return {
+                titulo: tituloMatch[1].trim(),
+                redacao: redacaoMatch[1].trim()
+            };
+        }
+        
+        const linhas = aiResponseText.split('\n').filter(l => l.trim());
+        return {
+            titulo: linhas[0].replace(/^#+\s*/, '').replace('TÍTULO:', '').trim(),
+            redacao: linhas.slice(1).join('\n').replace('REDAÇÃO:', '').trim()
+        };
     }
 
+    // ============================================
+    // LISTENER DE CLIQUE
+    // ============================================
     function instalarListenerClique() {
         if (STATE.listenerInstalado && STATE.onDocClick) {
             document.removeEventListener('click', STATE.onDocClick, true);
@@ -161,7 +226,7 @@ REDAÇÃO: [texto completo]`;
         STATE.onDocClick = (e) => {
             if (!STATE.aguardandoCampo) return;
             const path = e.composedPath ? e.composedPath() : [];
-            if (path.some(n => n && n.id && String(n.id).startsWith('digitadorV4-'))) return;
+            if (path.some(n => n && n.id && String(n.id).startsWith('digitadorV5-'))) return;
 
             e.preventDefault();
             e.stopPropagation();
@@ -188,6 +253,9 @@ REDAÇÃO: [texto completo]`;
         STATE.listenerInstalado = true;
     }
 
+    // ============================================
+    // INSERIR CARACTERES
+    // ============================================
     function inserirCharInput(el, ch) {
         try {
             const pos = typeof el.selectionStart === 'number' ? el.selectionStart : el.value.length;
@@ -230,29 +298,9 @@ REDAÇÃO: [texto completo]`;
         }
     }
 
-    function colarTexto(el, texto) {
-        try {
-            liberarColagem();
-            el.focus();
-            if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') {
-                const nativeSetter = Object.getOwnPropertyDescriptor(
-                    window.HTMLInputElement.prototype, 'value'
-                ).set;
-                nativeSetter.call(el, texto);
-            } else if (el.isContentEditable) {
-                el.innerText = texto;
-            }
-            el.dispatchEvent(new Event('input', { bubbles: true }));
-            el.dispatchEvent(new Event('change', { bubbles: true }));
-            setTimeout(bloquearColagem, 100);
-            return true;
-        } catch (error) {
-            console.error('Erro ao colar:', error);
-            bloquearColagem();
-            return false;
-        }
-    }
-
+    // ============================================
+    // ENCONTRAR BOTÃO SALVAR
+    // ============================================
     function encontrarBotaoSalvar() {
         const seletores = [
             'button[type="submit"]',
@@ -277,6 +325,9 @@ REDAÇÃO: [texto completo]`;
         return null;
     }
 
+    // ============================================
+    // INSERIR TEXTO NO CAMPO
+    // ============================================
     function inserirTextoNoCampo(el, texto) {
         if (STATE.typingTimeoutId) {
             clearTimeout(STATE.typingTimeoutId);
@@ -289,12 +340,6 @@ REDAÇÃO: [texto completo]`;
 
         const isInputEl = (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA');
         const isContentEditable = !!el.isContentEditable;
-
-        if (STATE.currentSpeed === 'instant') {
-            colarTexto(el, texto);
-            setTimeout(() => continuarFluxo(), CONFIG.DELAY_COLAGEM);
-            return;
-        }
 
         let prevReadOnly = null;
         try {
@@ -310,11 +355,7 @@ REDAÇÃO: [texto completo]`;
         let i = 0;
 
         function getIntervalo() {
-            if (STATE.currentSpeed === 'humana') {
-                if (i > 0 && Math.random() < 0.05) return 500 + Math.random() * 1000;
-                return 100 + Math.random() * 200;
-            }
-            return parseInt(STATE.currentSpeed, 10) || 40;
+            return parseInt(STATE.currentSpeed, 10) || 10;
         }
 
         function digitarProximo() {
@@ -346,6 +387,9 @@ REDAÇÃO: [texto completo]`;
         STATE.typingTimeoutId = setTimeout(digitarProximo, getIntervalo());
     }
 
+    // ============================================
+    // CONTINUAR FLUXO
+    // ============================================
     function continuarFluxo() {
         if (STATE.modo === 'titulo') {
             STATE.modo = 'redacao';
@@ -364,37 +408,13 @@ REDAÇÃO: [texto completo]`;
         }
     }
 
+    // ============================================
+    // INICIAR
+    // ============================================
     async function iniciar() {
-        if (!STATE.apiKey) {
-            STATE.apiKey = prompt('🔑 Digite sua API Key do Gemini:');
-            if (!STATE.apiKey || !STATE.apiKey.trim()) {
-                alert('❌ API Key é obrigatória!');
-                return;
-            }
-            STATE.apiKey = STATE.apiKey.trim();
-        }
-
-        if (!STATE.currentSpeed || STATE.currentSpeed === '40') {
-            const usarColagem = confirm('📋 Deseja usar COLAGEM instantânea?\n\nOK = Colar texto\nCancelar = Digitar');
-            if (usarColagem) {
-                STATE.currentSpeed = 'instant';
-                STATE.usarColagem = true;
-            } else {
-                const opcao = prompt(
-                    '⚡ Escolha a velocidade:\n\n' +
-                    '1 - Muito Rápido (10ms)\n' +
-                    '2 - Normal (40ms)\n' +
-                    '3 - Devagar (70ms)\n' +
-                    '4 - Muito Devagar (100ms)\n' +
-                    '5 - Humana (aleatório)\n\n' +
-                    'Digite o número:',
-                    '2'
-                );
-                const velocidades = { '1': '10', '2': '40', '3': '70', '4': '100', '5': 'humana' };
-                STATE.currentSpeed = velocidades[opcao] || '40';
-                STATE.usarColagem = false;
-            }
-        }
+        // Sempre usa velocidade 10ms
+        STATE.currentSpeed = CONFIG.VELOCIDADE_PADRAO;
+        STATE.usarColagem = false;
 
         const tema = extrairTemaRedacao();
         if (!tema) {
@@ -412,6 +432,7 @@ REDAÇÃO: [texto completo]`;
         STATE.textoRedacao = redacao.redacao;
 
         console.log('✅ Título:', redacao.titulo);
+        console.log('✅ Redação gerada!');
         
         alert('✅ REDAÇÃO GERADA!\n\nTítulo: "' + redacao.titulo + '"\n\n🎯 Clique no campo de TÍTULO.');
 
@@ -420,8 +441,8 @@ REDAÇÃO: [texto completo]`;
         instalarListenerClique();
     }
 
-    window.iniciarDigitadorV4 = iniciar;
-    console.log('🚀 Digitador IA carregado! Digite window.iniciarDigitadorV4() para começar.');
+    window.iniciarDigitadorV5 = iniciar;
+    console.log('🚀 Digitador IA V5 carregado!');
     iniciar();
 
 })();
