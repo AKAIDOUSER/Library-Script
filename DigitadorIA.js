@@ -1,24 +1,47 @@
-// AUTO DIGITADOR COM GEMINI - TÍTULO, REDAÇÃO E SALVAR AUTOMÁTICO
+// AUTO DIGITADOR COM GEMINI - VERSÃO CORRIGIDA E ORGANIZADA
 (function() {
     'use strict';
 
-    const NS = '__digitadorV3__';
+    // ============================================
+    // CONFIGURAÇÕES
+    // ============================================
+    const CONFIG = {
+        NAMESPACE: '__digitadorV4__',
+        MODELO_GEMINI: 'gemini-1.5-flash',
+        API_ENDPOINT: 'https://generativelanguage.googleapis.com/v1beta/models',
+        CLASSE_TEMA: 'MuiTypography-root MuiTypography-body2 css-k1sw4y',
+        DELAY_SALVAR: 500,
+        DELAY_COLAGEM: 200
+    };
 
-    // ---- Limpeza de execuções anteriores ----
-    if (window[NS]) {
+    // ============================================
+    // LIMPEZA DE INSTÂNCIAS ANTERIORES
+    // ============================================
+    function limparInstanciaAnterior() {
+        const state = window[CONFIG.NAMESPACE];
+        if (!state) return;
+
         try {
-            if (window[NS].listenerInstalado && window[NS].onDocClick) {
-                document.removeEventListener('click', window[NS].onDocClick, true);
+            if (state.listenerInstalado && state.onDocClick) {
+                document.removeEventListener('click', state.onDocClick, true);
             }
-            if (window[NS].typingTimeoutId) clearTimeout(window[NS].typingTimeoutId);
-            if (window[NS].pasteHandler) {
-                document.removeEventListener('paste', window[NS].pasteHandler, true);
+            if (state.typingTimeoutId) {
+                clearTimeout(state.typingTimeoutId);
             }
-        } catch (_) {}
+            if (state.pasteHandler) {
+                document.removeEventListener('paste', state.pasteHandler, true);
+            }
+        } catch (e) {
+            console.warn('Erro ao limpar instância anterior:', e);
+        }
     }
 
-    // ---- Estado global ----
-    window[NS] = {
+    limparInstanciaAnterior();
+
+    // ============================================
+    // ESTADO GLOBAL
+    // ============================================
+    const STATE = {
         aguardandoCampo: false,
         listenerInstalado: false,
         onDocClick: null,
@@ -27,43 +50,59 @@
         currentElement: null,
         currentText: '',
         currentIndex: 0,
-        currentSpeed: 40,
-        botaoSalvar: null,
+        currentSpeed: '40',
         modo: 'titulo',
         pasteHandler: null,
-        temaRedacao: '',
         tituloRedacao: '',
         textoRedacao: '',
-        // API Key padrão (você pode trocar aqui)
-        apiKey: '' // Substitua pela sua chave
+        apiKey: '',
+        usarColagem: false
     };
 
-    // ---- Função para liberar colagem ----
-    const forceEnableCopyPaste = (e) => {
+    window[CONFIG.NAMESPACE] = STATE;
+
+    // ============================================
+    // FUNÇÕES DE COLEÇÃO (PASTE)
+    // ============================================
+    const pasteHandler = (e) => {
         e.stopImmediatePropagation();
         return true;
     };
 
     function liberarColagem() {
-        document.addEventListener('paste', forceEnableCopyPaste, true);
-        window[NS].pasteHandler = forceEnableCopyPaste;
+        document.addEventListener('paste', pasteHandler, true);
+        STATE.pasteHandler = pasteHandler;
     }
 
     function bloquearColagem() {
-        if (window[NS].pasteHandler) {
-            document.removeEventListener('paste', window[NS].pasteHandler, true);
-            window[NS].pasteHandler = null;
+        if (STATE.pasteHandler) {
+            document.removeEventListener('paste', STATE.pasteHandler, true);
+            STATE.pasteHandler = null;
         }
     }
 
-    // ---- Função para extrair tema da redação ----
+    // ============================================
+    // EXTRAIR TEMA DA REDAÇÃO
+    // ============================================
     function extrairTemaRedacao() {
-        // Procura especificamente pelo elemento com a classe mencionada
-        const elementos = document.querySelectorAll('.MuiTypography-root.MuiTypography-body2.css-k1sw4y');
+        // Tenta encontrar o elemento específico primeiro
+        const elementoEspecifico = document.querySelector(`.${CONFIG.CLASSE_TEMA.replace(/ /g, '.')}`);
+        
+        if (elementoEspecifico) {
+            const texto = elementoEspecifico.textContent || '';
+            const match = texto.match(/(?:TEMA|Tema|tema)\s*:?\s*(.+)/i);
+            if (match && match[1]) {
+                return match[1].trim();
+            }
+            return texto.trim();
+        }
+
+        // Procura em todos os elementos P com a classe MuiTypography
+        const elementos = document.querySelectorAll('p.MuiTypography-root.MuiTypography-body2');
         
         for (const el of elementos) {
             const texto = el.textContent || '';
-            if (texto.toUpperCase().includes('TEMA')) {
+            if (/tema/i.test(texto)) {
                 const match = texto.match(/(?:TEMA|Tema|tema)\s*:?\s*(.+)/i);
                 if (match && match[1]) {
                     return match[1].trim();
@@ -71,32 +110,21 @@
                 return texto.trim();
             }
         }
-        
-        // Fallback: procura em todos os elementos P com a classe
-        const todosPs = document.querySelectorAll('p.MuiTypography-root.MuiTypography-body2');
-        for (const el of todosPs) {
-            const texto = el.textContent || '';
-            if (texto.toUpperCase().includes('TEMA')) {
-                const match = texto.match(/(?:TEMA|Tema|tema)\s*:?\s*(.+)/i);
-                if (match && match[1]) {
-                    return match[1].trim();
-                }
-                return texto.trim();
-            }
-        }
-        
+
         return null;
     }
 
-    // ---- Função para gerar redação com Gemini ----
+    // ============================================
+    // GERAR REDAÇÃO COM GEMINI
+    // ============================================
     async function gerarRedacaoComGemini(tema) {
-        // Se não tiver API Key configurada, pede ao usuário
-        if (!window[NS].apiKey || window[NS].apiKey === 'AIzaSyA6N8x8x8x8x8x8x8x8x8x8x8x8x8x8') {
-            window[NS].apiKey = prompt('Digite sua API Key do Gemini:');
-            if (!window[NS].apiKey) {
-                alert('API Key é necessária!');
+        if (!STATE.apiKey) {
+            STATE.apiKey = prompt('🔑 Digite sua API Key do Gemini:');
+            if (!STATE.apiKey || !STATE.apiKey.trim()) {
+                alert('❌ API Key é necessária!');
                 return null;
             }
+            STATE.apiKey = STATE.apiKey.trim();
         }
 
         const prompt = `Escreva uma redação dissertativa-argumentativa completa sobre o tema: "${tema}". 
@@ -110,136 +138,129 @@ Requisitos:
 - Linguagem formal e culta
 - Respeitar a norma padrão da língua portuguesa
 
-Formato da resposta (EXATAMENTE neste formato):
+IMPORTANTE: Responda EXATAMENTE neste formato:
 TÍTULO: [título da redação]
 REDAÇÃO: [texto completo da redação com parágrafos separados por linha em branco]`;
 
         try {
-            // CORREÇÃO: usando o endpoint e formato correto da API
-            const response = await fetch(
-                `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${window[NS].apiKey}`,
-                {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({
-                        contents: [
-                            {
-                                parts: [
-                                    {
-                                        text: prompt
-                                    }
-                                ]
-                            }
-                        ]
-                    })
-                }
-            );
+            const url = `${CONFIG.API_ENDPOINT}/${CONFIG.MODELO_GEMINI}:generateContent?key=${STATE.apiKey}`;
+            
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    contents: [{
+                        parts: [{ text: prompt }]
+                    }]
+                })
+            });
 
             if (!response.ok) {
                 const errorData = await response.json();
-                throw new Error(`Erro HTTP ${response.status}: ${JSON.stringify(errorData)}`);
+                throw new Error(`HTTP ${response.status}: ${JSON.stringify(errorData)}`);
             }
 
             const data = await response.json();
-            console.log('Resposta Gemini:', data); // Debug
             
-            if (data.candidates && data.candidates[0] && data.candidates[0].content) {
-                const textoCompleto = data.candidates[0].content.parts[0].text;
-                
-                // Extrai título e redação do formato especificado
-                const tituloMatch = textoCompleto.match(/TÍTULO:\s*(.+?)(?:\n|$)/);
-                const redacaoMatch = textoCompleto.match(/REDAÇÃO:\s*([\s\S]+)/);
-                
-                let titulo, redacao;
-                
-                if (tituloMatch && redacaoMatch) {
-                    titulo = tituloMatch[1].trim();
-                    redacao = redacaoMatch[1].trim();
-                } else {
-                    // Fallback: tenta extrair de outra forma
-                    const linhas = textoCompleto.split('\n').filter(l => l.trim());
-                    titulo = linhas[0].replace(/^#+\s*/, '').replace('TÍTULO:', '').trim();
-                    redacao = linhas.slice(1).join('\n').replace('REDAÇÃO:', '').trim();
-                }
-                
-                if (!titulo || !redacao) {
-                    throw new Error('Não foi possível extrair título e redação da resposta');
-                }
-                
-                return { titulo, redacao };
-            } else {
-                throw new Error('Resposta da API não contém o conteúdo esperado');
+            if (!data.candidates || !data.candidates[0] || !data.candidates[0].content) {
+                throw new Error('Resposta da API sem conteúdo');
             }
-        } catch (error) {
-            console.error('Erro ao gerar redação:', error);
+
+            const textoCompleto = data.candidates[0].content.parts[0].text;
             
-            // Mensagem de erro mais amigável
+            // Extrai título e redação
+            const tituloMatch = textoCompleto.match(/TÍTULO:\s*(.+?)(?:\n|$)/);
+            const redacaoMatch = textoCompleto.match(/REDAÇÃO:\s*([\s\S]+)/);
+            
+            if (tituloMatch && redacaoMatch) {
+                return {
+                    titulo: tituloMatch[1].trim(),
+                    redacao: redacaoMatch[1].trim()
+                };
+            }
+            
+            // Fallback
+            const linhas = textoCompleto.split('\n').filter(l => l.trim());
+            return {
+                titulo: linhas[0].replace(/^#+\s*/, '').replace('TÍTULO:', '').trim(),
+                redacao: linhas.slice(1).join('\n').replace('REDAÇÃO:', '').trim()
+            };
+
+        } catch (error) {
+            console.error('Erro Gemini:', error);
+            
             if (error.message.includes('403')) {
-                alert('Erro 403: API Key inválida ou sem permissão. Verifique sua chave.');
+                alert('❌ API Key inválida ou sem permissão!');
             } else if (error.message.includes('429')) {
-                alert('Erro 429: Muitas requisições. Aguarde um momento e tente novamente.');
+                alert('⚠️ Muitas requisições! Aguarde um momento.');
             } else {
-                alert(`Erro ao gerar redação: ${error.message}`);
+                alert('❌ Erro ao gerar redação: ' + error.message);
             }
             
             return null;
         }
     }
 
-    // ---- Listener único de clique ----
-    function ensureListenerInstalled() {
-        if (window[NS].listenerInstalado && window[NS].onDocClick) {
-            document.removeEventListener('click', window[NS].onDocClick, true);
-            window[NS].listenerInstalado = false;
+    // ============================================
+    // LISTENER DE CLIQUE NOS CAMPOS
+    // ============================================
+    function instalarListenerClique() {
+        if (STATE.listenerInstalado && STATE.onDocClick) {
+            document.removeEventListener('click', STATE.onDocClick, true);
+            STATE.listenerInstalado = false;
         }
 
-        const onDocClick = (e) => {
-            if (!window[NS].aguardandoCampo) return;
+        STATE.onDocClick = (e) => {
+            if (!STATE.aguardandoCampo) return;
 
+            // Ignora cliques nos elementos do próprio script
             const path = e.composedPath ? e.composedPath() : [];
-            if (path.some(n => n && n.id && String(n.id).startsWith('digitadorV3-'))) return;
+            if (path.some(n => n && n.id && String(n.id).startsWith('digitadorV4-'))) return;
 
             e.preventDefault();
             e.stopPropagation();
             e.stopImmediatePropagation();
 
-            window[NS].aguardandoCampo = false;
+            STATE.aguardandoCampo = false;
 
             const el = e.target;
-            if (!(el && (el.isContentEditable || el.tagName === 'INPUT' || el.tagName === 'TEXTAREA'))) {
-                alert('Esse não é um campo válido. Clique em um INPUT ou TEXTAREA.');
+            
+            // Verifica se é um campo válido
+            if (!el || (!el.isContentEditable && el.tagName !== 'INPUT' && el.tagName !== 'TEXTAREA')) {
+                alert('❌ Campo inválido! Clique em um INPUT ou TEXTAREA.');
+                STATE.aguardandoCampo = true;
                 return;
             }
 
-            // Usa o texto apropriado baseado no modo
-            if (window[NS].modo === 'titulo') {
-                iniciarDigitacao(el, window[NS].tituloRedacao, window[NS].currentSpeed);
-            } else if (window[NS].modo === 'redacao') {
-                iniciarDigitacao(el, window[NS].textoRedacao, window[NS].currentSpeed);
+            // Inicia a inserção do texto
+            const texto = STATE.modo === 'titulo' ? STATE.tituloRedacao : STATE.textoRedacao;
+            
+            if (!texto) {
+                alert('❌ Texto não encontrado!');
+                return;
             }
+
+            inserirTextoNoCampo(el, texto);
         };
 
-        window[NS].onDocClick = onDocClick;
-        document.addEventListener('click', onDocClick, true);
-        window[NS].listenerInstalado = true;
+        document.addEventListener('click', STATE.onDocClick, true);
+        STATE.listenerInstalado = true;
     }
 
-    // ===============================
-    // FUNÇÕES DE INSERÇÃO DE CARACTERES
-    // ===============================
-    function inserirCharEmInput(el, ch) {
+    // ============================================
+    // INSERIR CARACTERES (DIGITAÇÃO)
+    // ============================================
+    function inserirCharInput(el, ch) {
         try {
-            let pos = typeof el.selectionStart === 'number' ? el.selectionStart : el.value.length;
+            const pos = typeof el.selectionStart === 'number' ? el.selectionStart : el.value.length;
 
             if (typeof el.setRangeText === 'function') {
                 el.setRangeText(ch, pos, pos, 'end');
             } else {
                 const v = el.value || '';
-                const before = v.slice(0, pos);
-                const after = v.slice(pos);
-                el.value = before + ch + after;
+                el.value = v.slice(0, pos) + ch + v.slice(pos);
                 const newPos = pos + ch.length;
                 try { el.setSelectionRange(newPos, newPos); } catch (_) {}
             }
@@ -248,26 +269,30 @@ REDAÇÃO: [texto completo da redação com parágrafos separados por linha em b
         }
     }
 
-    function inserirCharEmContentEditable(el, ch) {
+    function inserirCharContentEditable(el, ch) {
         try {
             const doc = el.ownerDocument || document;
             const sel = doc.getSelection ? doc.getSelection() : null;
             let range;
+
             if (sel && sel.rangeCount) {
                 range = sel.getRangeAt(0).cloneRange();
                 if (!el.contains(range.commonAncestorContainer)) {
                     range = null;
                 }
             }
+
             if (!range) {
                 range = doc.createRange();
                 range.selectNodeContents(el);
                 range.collapse(false);
             }
+
             const txtNode = doc.createTextNode(ch);
             range.insertNode(txtNode);
             range.setStartAfter(txtNode);
             range.collapse(true);
+
             if (sel) {
                 sel.removeAllRanges();
                 sel.addRange(range);
@@ -277,40 +302,29 @@ REDAÇÃO: [texto completo da redação com parágrafos separados por linha em b
         }
     }
 
-    // ===============================
-    // FUNÇÃO PARA COLAR TEXTO (ALTERNATIVA RÁPIDA)
-    // ===============================
-    function colarTextoNoCampo(el, texto) {
+    // ============================================
+    // COLAR TEXTO (MÉTODO RÁPIDO)
+    // ============================================
+    function colarTexto(el, texto) {
         try {
-            // Libera a colagem
             liberarColagem();
-            
-            // Foca no elemento
             el.focus();
-            
-            // Se o elemento for input/textarea
+
             if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') {
-                // Método direto para inputs
-                const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
+                // Usa setter nativo para inputs
+                const nativeSetter = Object.getOwnPropertyDescriptor(
                     window.HTMLInputElement.prototype, 'value'
                 ).set;
-                
-                nativeInputValueSetter.call(el, texto);
-                
-                // Dispara eventos
-                el.dispatchEvent(new Event('input', { bubbles: true }));
-                el.dispatchEvent(new Event('change', { bubbles: true }));
+                nativeSetter.call(el, texto);
             } else if (el.isContentEditable) {
-                // Para contentEditable
                 el.innerText = texto;
-                el.dispatchEvent(new Event('input', { bubbles: true }));
             }
-            
-            // Bloqueia novamente
-            setTimeout(() => {
-                bloquearColagem();
-            }, 100);
-            
+
+            // Dispara eventos
+            el.dispatchEvent(new Event('input', { bubbles: true }));
+            el.dispatchEvent(new Event('change', { bubbles: true }));
+
+            setTimeout(bloquearColagem, 100);
             return true;
         } catch (error) {
             console.error('Erro ao colar:', error);
@@ -319,9 +333,9 @@ REDAÇÃO: [texto completo da redação com parágrafos separados por linha em b
         }
     }
 
-    // ===============================
-    // FUNÇÃO PARA PROCURAR BOTÃO SALVAR
-    // ===============================
+    // ============================================
+    // ENCONTRAR BOTÃO SALVAR
+    // ============================================
     function encontrarBotaoSalvar() {
         const seletores = [
             'button[type="submit"]',
@@ -343,10 +357,7 @@ REDAÇÃO: [texto completo da redação com parágrafos separados por linha em b
         const botoes = document.querySelectorAll('button, input[type="submit"]');
         for (const btn of botoes) {
             const texto = (btn.textContent || btn.value || '').toLowerCase();
-            if (texto.includes('salvar') || 
-                texto.includes('save') ||
-                texto.includes('enviar') ||
-                texto.includes('publicar')) {
+            if (/salvar|save|enviar|publicar|send|submit/.test(texto)) {
                 return btn;
             }
         }
@@ -354,196 +365,191 @@ REDAÇÃO: [texto completo da redação com parágrafos separados por linha em b
         return null;
     }
 
-    // ===============================
-    // FUNÇÃO PRINCIPAL DE DIGITAÇÃO
-    // ===============================
-    function iniciarDigitacao(el, texto, velocidade) {
-        if (window[NS].typingTimeoutId) {
-            clearTimeout(window[NS].typingTimeoutId);
-            window[NS].typingTimeoutId = null;
+    // ============================================
+    // FUNÇÃO PRINCIPAL DE INSERÇÃO DE TEXTO
+    // ============================================
+    function inserirTextoNoCampo(el, texto) {
+        // Limpa timeout anterior
+        if (STATE.typingTimeoutId) {
+            clearTimeout(STATE.typingTimeoutId);
+            STATE.typingTimeoutId = null;
         }
 
-        window[NS].currentElement = el;
-        window[NS].currentText = texto;
-        window[NS].currentIndex = 0;
-        window[NS].currentSpeed = velocidade;
+        STATE.currentElement = el;
+        STATE.currentText = texto;
+        STATE.currentIndex = 0;
 
         const isInputEl = (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA');
         const isContentEditable = !!el.isContentEditable;
 
-        // Se velocidade for "instant", cola o texto diretamente
-        if (velocidade === 'instant') {
-            colarTextoNoCampo(el, texto);
+        // MÉTODO DE COLAGEM (INSTANT)
+        if (STATE.currentSpeed === 'instant') {
+            colarTexto(el, texto);
             
-            // Continua o fluxo
             setTimeout(() => {
-                if (window[NS].modo === 'titulo') {
-                    iniciarModoRedacao();
-                } else if (window[NS].modo === 'redacao') {
-                    setTimeout(() => {
-                        const botao = encontrarBotaoSalvar();
-                        if (botao) {
-                            botao.click();
-                            console.log('✅ Botão Salvar clicado!');
-                        } else {
-                            alert('⚠️ Botão Salvar não encontrado! Clique manualmente.');
-                        }
-                    }, 500);
-                }
-            }, 200);
+                continuarFluxo();
+            }, CONFIG.DELAY_COLAGEM);
+            
             return;
         }
 
+        // MÉTODO DE DIGITAÇÃO
         let prevReadOnly = null;
+        
         try {
             if (isInputEl) {
                 prevReadOnly = el.readOnly;
                 el.readOnly = true;
-                try { el.focus({ preventScroll: true }); } catch (_) { try { el.focus(); } catch (_) {} }
-                try {
-                    const len = el.value ? el.value.length : 0;
-                    el.setSelectionRange(len, len);
-                } catch (_) {}
+                el.focus({ preventScroll: true });
+                const len = el.value ? el.value.length : 0;
+                el.setSelectionRange(len, len);
             }
         } catch (_) {}
 
         let i = 0;
 
-        function obterProximoIntervalo() {
-            if (velocidade === 'humana') {
+        function getIntervalo() {
+            if (STATE.currentSpeed === 'humana') {
                 if (i > 0 && Math.random() < 0.05) {
                     return 500 + Math.random() * 1000;
                 }
                 return 100 + Math.random() * 200;
-            } else {
-                return parseInt(velocidade, 10) || 40;
             }
+            return parseInt(STATE.currentSpeed, 10) || 40;
         }
 
-        function digitarProximoCaractere() {
-            if (window[NS].paused) return;
+        function digitarProximo() {
+            if (STATE.paused) return;
 
             if (i < texto.length) {
-                const c = texto[i++];
+                const ch = texto[i++];
 
                 if (isInputEl) {
-                    inserirCharEmInput(el, c);
+                    inserirCharInput(el, ch);
                 } else if (isContentEditable) {
-                    inserirCharEmContentEditable(el, c);
+                    inserirCharContentEditable(el, ch);
                 } else {
-                    try {
-                        el.innerText = (el.innerText || '') + c;
-                    } catch (_) {}
+                    try { el.innerText = (el.innerText || '') + ch; } catch (_) {}
                 }
 
+                // Dispara eventos periodicamente
                 try { el.dispatchEvent(new Event('input', { bubbles: true })); } catch (_) {}
                 if (i % 25 === 0) {
-                    try { el.dispatchEvent(new Event('input', { bubbles: true })); } catch (_) {}
+                    try { el.dispatchEvent(new Event('change', { bubbles: true })); } catch (_) {}
                 }
 
-                window[NS].currentIndex = i;
-                window[NS].typingTimeoutId = setTimeout(digitarProximoCaractere, obterProximoIntervalo());
+                STATE.currentIndex = i;
+                STATE.typingTimeoutId = setTimeout(digitarProximo, getIntervalo());
             } else {
-                window[NS].typingTimeoutId = null;
+                // Finalizou a digitação
+                STATE.typingTimeoutId = null;
 
                 try {
                     if (isInputEl) {
-                        try { el.blur(); } catch (_) {}
-                        if (prevReadOnly !== null && typeof prevReadOnly !== 'undefined') {
-                            try { el.readOnly = prevReadOnly; } catch (_) {}
+                        el.blur();
+                        if (prevReadOnly !== null && prevReadOnly !== undefined) {
+                            el.readOnly = prevReadOnly;
                         } else {
-                            try { el.readOnly = false; } catch (_) {}
+                            el.readOnly = false;
                         }
                     }
                 } catch (_) {}
 
-                try { el.dispatchEvent(new Event('input', { bubbles: true })); } catch (_) {}
-                try { el.dispatchEvent(new Event('change', { bubbles: true })); } catch (_) {}
+                el.dispatchEvent(new Event('input', { bubbles: true }));
+                el.dispatchEvent(new Event('change', { bubbles: true }));
 
-                if (window[NS].modo === 'titulo') {
-                    iniciarModoRedacao();
-                } else if (window[NS].modo === 'redacao') {
-                    setTimeout(function() {
-                        const botao = encontrarBotaoSalvar();
-                        if (botao) {
-                            botao.click();
-                            console.log('✅ Botão Salvar clicado!');
-                        } else {
-                            alert('⚠️ Botão Salvar não encontrado! Clique manualmente.');
-                        }
-                    }, 500);
-                }
+                continuarFluxo();
             }
         }
 
-        window[NS].typingTimeoutId = setTimeout(digitarProximoCaractere, obterProximoIntervalo());
+        STATE.typingTimeoutId = setTimeout(digitarProximo, getIntervalo());
     }
 
-    // ===============================
-    // FUNÇÕES DE MODO
-    // ===============================
-    function iniciarModoTitulo(velocidade) {
-        window[NS].modo = 'titulo';
-        window[NS].currentSpeed = velocidade;
-        ensureListenerInstalled();
-        window[NS].aguardandoCampo = true;
-        alert('📝 Clique no campo de TÍTULO onde deseja digitar.');
-    }
-
-    function iniciarModoRedacao() {
-        window[NS].modo = 'redacao';
-        window[NS].aguardandoCampo = true;
-        alert('📄 Clique no campo de REDAÇÃO onde deseja digitar.');
-    }
-
-    // ===============================
-    // FUNÇÃO PARA ESCOLHER VELOCIDADE
-    // ===============================
-    function escolherVelocidade() {
-        const opcao = prompt(
-            '⚡ ESCOLHA A VELOCIDADE:\n\n' +
-            '1 - Instantâneo (cola o texto)\n' +
-            '2 - Muito Rápido (10ms)\n' +
-            '3 - Normal (40ms)\n' +
-            '4 - Devagar (70ms)\n' +
-            '5 - Muito Devagar (100ms)\n' +
-            '6 - Humana (aleatório)\n\n' +
-            'Digite o número da opção:',
-            '3'
-        );
-
-        const velocidades = {
-            '1': 'instant',
-            '2': '10',
-            '3': '40',
-            '4': '70',
-            '5': '100',
-            '6': 'humana'
-        };
-
-        const vel = velocidades[opcao];
-        if (!vel) {
-            alert('Opção inválida! Usando velocidade Normal (40ms).');
-            return '40';
+    // ============================================
+    // CONTINUAR FLUXO (PRÓXIMO CAMPO OU SALVAR)
+    // ============================================
+    function continuarFluxo() {
+        if (STATE.modo === 'titulo') {
+            // Passou para redação
+            STATE.modo = 'redacao';
+            STATE.aguardandoCampo = true;
+            alert('📄 Agora clique no campo de REDAÇÃO.');
+        } else if (STATE.modo === 'redacao') {
+            // Finalizou, procura botão salvar
+            setTimeout(() => {
+                const botao = encontrarBotaoSalvar();
+                if (botao) {
+                    botao.click();
+                    console.log('✅ Botão Salvar clicado!');
+                } else {
+                    alert('⚠️ Botão Salvar não encontrado! Clique manualmente.');
+                }
+            }, CONFIG.DELAY_SALVAR);
         }
-        return vel;
     }
 
-    // ===============================
-    // FUNÇÃO PRINCIPAL - FLUXO COMPLETO
-    // ===============================
-    async function iniciarFluxoCompleto() {
-        // Passo 1: Extrair tema
+    // ============================================
+    // PERGUNTAR CONFIGURAÇÕES AO USUÁRIO
+    // ============================================
+    function perguntarConfiguracoes() {
+        // API Key
+        STATE.apiKey = prompt('🔑 Digite sua API Key do Gemini:');
+        if (!STATE.apiKey || !STATE.apiKey.trim()) {
+            alert('❌ API Key é obrigatória!');
+            return false;
+        }
+        STATE.apiKey = STATE.apiKey.trim();
+
+        // Método
+        STATE.usarColagem = confirm('📋 Deseja usar COLAGEM instantânea?\n\nOK = Colar texto\nCancelar = Digitar caractere por caractere');
+
+        if (STATE.usarColagem) {
+            STATE.currentSpeed = 'instant';
+        } else {
+            const opcao = prompt(
+                '⚡ Escolha a velocidade de digitação:\n\n' +
+                '1 - Muito Rápido (10ms)\n' +
+                '2 - Normal (40ms)\n' +
+                '3 - Devagar (70ms)\n' +
+                '4 - Muito Devagar (100ms)\n' +
+                '5 - Modo Humano (aleatório)\n\n' +
+                'Digite o número:',
+                '2'
+            );
+
+            const velocidades = {
+                '1': '10',
+                '2': '40',
+                '3': '70',
+                '4': '100',
+                '5': 'humana'
+            };
+
+            STATE.currentSpeed = velocidades[opcao] || '40';
+        }
+
+        return true;
+    }
+
+    // ============================================
+    // FLUXO PRINCIPAL
+    // ============================================
+    async function iniciar() {
+        // Passo 1: Configurações
+        if (!perguntarConfiguracoes()) return;
+
+        // Passo 2: Extrair tema
         const tema = extrairTemaRedacao();
         
         if (!tema) {
-            alert('❌ Tema não encontrado!\n\nProcure o elemento com classe:\n"MuiTypography-root MuiTypography-body2 css-k1sw4y"');
+            alert('❌ Tema não encontrado!\n\nProcure o elemento:\n"' + CONFIG.CLASSE_TEMA + '"');
             return;
         }
         
-        alert(`🎯 Tema encontrado: "${tema}"\n🤖 Gerando redação com Gemini...`);
+        console.log('📝 Tema encontrado:', tema);
+        alert('📝 Tema encontrado: "' + tema + '"\n\n🤖 Gerando redação com Gemini...');
 
-        // Passo 2: Gerar redação
+        // Passo 3: Gerar redação
         const redacao = await gerarRedacaoComGemini(tema);
         
         if (!redacao) {
@@ -551,30 +557,38 @@ REDAÇÃO: [texto completo da redação com parágrafos separados por linha em b
             return;
         }
 
-        // Armazena título e redação
-        window[NS].tituloRedacao = redacao.titulo;
-        window[NS].textoRedacao = redacao.redacao;
+        STATE.tituloRedacao = redacao.titulo;
+        STATE.textoRedacao = redacao.redacao;
 
-        alert(`✅ Redação gerada com sucesso!\n\nTítulo: "${redacao.titulo}"\n\nA redação será inserida automaticamente.`);
+        console.log('✅ Título:', redacao.titulo);
+        console.log('✅ Redação gerada com sucesso!');
+        
+        alert(
+            '✅ REDAÇÃO GERADA!\n\n' +
+            'Título: "' + redacao.titulo + '"\n\n' +
+            'Método: ' + (STATE.usarColagem ? 'Colagem instantânea' : 'Digitação ' + STATE.currentSpeed + 'ms')
+        );
 
-        // Passo 3: Escolher velocidade
-        const velocidade = escolherVelocidade();
-        if (!velocidade) return;
-
-        // Passo 4: Iniciar com título
-        iniciarModoTitulo(velocidade);
+        // Passo 4: Instalar listener e aguardar clique no título
+        STATE.modo = 'titulo';
+        STATE.aguardandoCampo = true;
+        instalarListenerClique();
+        
+        alert('🎯 CLIQUE NO CAMPO DE TÍTULO para inserir o texto.');
     }
 
-    // ---- API pública ----
-    window.iniciarDigitador = function() {
-        iniciarFluxoCompleto();
-    };
+    // ============================================
+    // API PÚBLICA
+    // ============================================
+    window.iniciarDigitadorV4 = iniciar;
 
-    // ---- Início automático ----
-    console.log('🚀 Auto Digitador com Gemini iniciado!');
-    console.log('ℹ️ Para executar manualmente: window.iniciarDigitador()');
+    // ============================================
+    // INÍCIO AUTOMÁTICO
+    // ============================================
+    console.log('🚀 Auto Digitador com Gemini carregado!');
+    console.log('ℹ️  Digite window.iniciarDigitadorV4() para começar.');
     
     // Inicia automaticamente
-    iniciarFluxoCompleto();
+    iniciar();
 
 })();
