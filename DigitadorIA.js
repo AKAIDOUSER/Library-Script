@@ -1,4 +1,4 @@
-// AUTO DIGITADOR COM MISTRAL - VERSÃO FINAL
+// AUTO DIGITADOR COM MISTRAL - VERSÃO FINAL CORRIGIDA
 (function() {
     'use strict';
 
@@ -51,31 +51,26 @@
         tituloRedacao: '',
         textoRedacao: '',
         usarColagem: false,
-        maxPalavras: CONFIG.MAX_PALAVRAS_PADRAO
+        maxPalavras: CONFIG.MAX_PALAVRAS_PADRAO,
+        generoRedacao: ''
     };
 
     window[CONFIG.NAMESPACE] = STATE;
 
     // ============================================
-    // EXTRAIR TEMA CORRETO - CORRIGIDO
+    // EXTRAIR TEMA CORRETO
     // ============================================
     function extrairTemaRedacao() {
         console.log('🔍 Procurando tema da redação...');
         
-        // Procura pelo elemento específico com a classe MuiTypography-body2
         const elementosAlvo = document.querySelectorAll('p.MuiTypography-body2, p.MuiTypography-root.MuiTypography-body2');
-        
-        console.log(`📊 Elementos encontrados: ${elementosAlvo.length}`);
         
         for (const el of elementosAlvo) {
             const textoCompleto = el.textContent?.trim() || '';
-            console.log('📝 Analisando:', textoCompleto);
             
             if (textoCompleto.toUpperCase().includes('TEMA:')) {
-                // Remove "TEMA:" e pega o texto depois
                 let temaExtraido = textoCompleto.replace(/TEMA:\s*/i, '').trim();
                 
-                // Se estiver vazio, procura no próximo elemento
                 if (!temaExtraido || temaExtraido.length < 5) {
                     const proximoIrmao = el.nextElementSibling;
                     if (proximoIrmao) {
@@ -83,7 +78,6 @@
                     }
                 }
                 
-                // Se ainda vazio, procura no elemento pai
                 if (!temaExtraido || temaExtraido.length < 5) {
                     const elementoPai = el.parentElement;
                     if (elementoPai) {
@@ -92,7 +86,6 @@
                     }
                 }
                 
-                // Limpa e valida
                 temaExtraido = temaExtraido.replace(/^[:\s]+/, '').replace(/[\s]+$/, '').trim();
                 
                 if (temaExtraido && temaExtraido.length >= 10 && !/^[A-F0-9-]+$/i.test(temaExtraido)) {
@@ -102,7 +95,6 @@
             }
         }
         
-        // Fallback: procura qualquer elemento com "TEMA:"
         const todosElementos = document.querySelectorAll('*');
         for (const el of todosElementos) {
             if (el.children.length === 0) {
@@ -119,6 +111,45 @@
         
         console.error('❌ Tema não encontrado!');
         return null;
+    }
+
+    // ============================================
+    // EXTRAIR GÊNERO DA REDAÇÃO
+    // ============================================
+    function extrairGeneroRedacao() {
+        console.log('🔍 Procurando gênero da redação...');
+        
+        // Procura elementos que contenham "Gênero:"
+        const todosElementos = document.querySelectorAll('p.MuiTypography-body1, p.MuiTypography-root.MuiTypography-body1');
+        
+        for (const el of todosElementos) {
+            const textoCompleto = el.textContent?.trim() || '';
+            
+            if (textoCompleto.toUpperCase().includes('GÊNERO') || textoCompleto.toUpperCase().includes('GENERO')) {
+                console.log('📝 Elemento "Gênero:" encontrado:', textoCompleto);
+                
+                // Procura o próximo elemento que contém o gênero
+                const proximoIrmao = el.nextElementSibling;
+                if (proximoIrmao) {
+                    const generoExtraido = proximoIrmao.textContent?.trim() || '';
+                    console.log('✅ Gênero encontrado:', generoExtraido);
+                    return generoExtraido;
+                }
+            }
+        }
+        
+        // Fallback: procura em todos os elementos
+        for (const el of todosElementos) {
+            const texto = el.textContent?.trim() || '';
+            if (texto === 'RESENHA' || texto === 'DISSERTAÇÃO' || texto === 'ARTIGO' || 
+                texto === 'CRÔNICA' || texto === 'CONTO' || texto === 'RELATO') {
+                console.log('✅ Gênero encontrado (fallback):', texto);
+                return texto;
+            }
+        }
+        
+        console.log('⚠️ Gênero não encontrado, usando padrão: DISSERTAÇÃO');
+        return 'DISSERTAÇÃO';
     }
 
     async function fetchWithTimeout(resource, options = {}, timeout = 15000) {
@@ -147,24 +178,63 @@
         return texto.trim();
     }
 
-    async function gerarRedacaoComMistral(tema, maxPalavras) {
-        const prompt = `Você é um professor de redação. Escreva uma redação dissertativa-argumentativa completa sobre o tema: "${tema}".
+    async function gerarRedacaoComMistral(tema, maxPalavras, genero) {
+        let prompt = '';
+        
+        // Adapta o prompt baseado no gênero
+        if (genero.toUpperCase() === 'RESENHA') {
+            prompt = `Você é um especialista em redação. Escreva uma RESENHA CRÍTICA completa sobre o tema: "${tema}".
         
 Instruções IMPORTANTES:
 - NÃO use formatação markdown (sem **, sem ##, sem __)
 - NÃO coloque asteriscos no título ou no texto
-- Crie um título criativo e relevante ao tema (SEM asteriscos)
+- Crie um título criativo e relevante (SEM asteriscos)
+- Estrutura da resenha:
+  1. Introdução com apresentação do tema/obra
+  2. Descrição e análise crítica
+  3. Pontos positivos e negativos
+  4. Conclusão com recomendação
+- Use linguagem formal e culta
+- A redação deve ter NO MÁXIMO ${maxPalavras} palavras
+- NÃO repita o título no corpo da redação
+
+IMPORTANTE: Responda EXATAMENTE neste formato (sem asteriscos):
+TÍTULO: [título da resenha - sem formatação]
+REDAÇÃO: [texto completo da resenha - sem formatação]`;
+        } else if (genero.toUpperCase() === 'ARTIGO') {
+            prompt = `Você é um especialista em redação. Escreva um ARTIGO DE OPINIÃO completo sobre o tema: "${tema}".
+        
+Instruções IMPORTANTES:
+- NÃO use formatação markdown (sem **, sem ##, sem __)
+- Crie um título criativo e relevante (SEM asteriscos)
+- Estrutura do artigo:
+  1. Introdução com contextualização
+  2. Desenvolvimento com argumentos
+  3. Dados e exemplos
+  4. Conclusão com reflexão
+- Use linguagem formal e culta
+- A redação deve ter NO MÁXIMO ${maxPalavras} palavras
+
+IMPORTANTE: Responda EXATAMENTE neste formato (sem asteriscos):
+TÍTULO: [título do artigo - sem formatação]
+REDAÇÃO: [texto completo do artigo - sem formatação]`;
+        } else {
+            // Padrão: Dissertação
+            prompt = `Você é um professor de redação. Escreva uma DISSERTAÇÃO ARGUMENTATIVA completa sobre o tema: "${tema}".
+        
+Instruções IMPORTANTES:
+- NÃO use formatação markdown (sem **, sem ##, sem __)
+- Crie um título criativo e relevante (SEM asteriscos)
 - Faça uma introdução com tese clara
 - Desenvolva em 2-3 parágrafos com argumentos
 - Conclusão com proposta de intervenção
 - Use linguagem formal e culta
 - A redação deve ter NO MÁXIMO ${maxPalavras} palavras
-- NÃO repita o título no corpo da redação
-- NÃO use marcadores de formatação
 
 IMPORTANTE: Responda EXATAMENTE neste formato (sem asteriscos):
-TÍTULO: [título da redação - sem formatação]
-REDAÇÃO: [texto completo da redação - sem formatação]`;
+TÍTULO: [título - sem formatação]
+REDAÇÃO: [texto completo - sem formatação]`;
+        }
 
         let aiResponseText = null;
 
@@ -216,35 +286,51 @@ REDAÇÃO: [texto completo da redação - sem formatação]`;
 
         aiResponseText = limparFormatacao(aiResponseText);
 
+        // Extrai APENAS o título (primeira linha após TÍTULO:)
         const tituloMatch = aiResponseText.match(/TÍTULO:\s*(.+?)(?:\n|$)/i);
         const redacaoMatch = aiResponseText.match(/REDAÇÃO:\s*([\s\S]+)/i);
         
         let titulo = '';
         let redacao = '';
         
-        if (tituloMatch && redacaoMatch) {
+        if (tituloMatch) {
             titulo = limparFormatacao(tituloMatch[1].trim());
+            // Garante que o título é apenas UMA linha
+            titulo = titulo.split('\n')[0].trim();
+        }
+        
+        if (redacaoMatch) {
             redacao = limparFormatacao(redacaoMatch[1].trim());
+            // Remove qualquer "TÍTULO:" que possa ter sobrado
+            redacao = redacao.replace(/TÍTULO:.*?\n/g, '');
         } else {
-            const linhas = aiResponseText.split('\n').filter(l => l.trim());
-            for (let i = 0; i < linhas.length; i++) {
-                if (linhas[i].toUpperCase().includes('TÍTULO')) {
-                    titulo = limparFormatacao(linhas[i].replace(/TÍTULO:?\s*/i, '').trim());
-                    if (!titulo && i + 1 < linhas.length) {
-                        titulo = limparFormatacao(linhas[i + 1].trim());
-                    }
-                }
-                if (linhas[i].toUpperCase().includes('REDAÇÃO')) {
-                    redacao = linhas.slice(i + 1).join('\n');
-                    redacao = limparFormatacao(redacao.replace(/REDAÇÃO:?\s*/i, '').trim());
-                    break;
-                }
+            // Se não encontrou REDAÇÃO:, pega tudo depois do título
+            const linhas = aiResponseText.split('\n');
+            const indexRedacao = linhas.findIndex(l => l.toUpperCase().includes('REDAÇÃO'));
+            if (indexRedacao >= 0) {
+                redacao = linhas.slice(indexRedacao + 1).join('\n');
+                redacao = limparFormatacao(redacao);
             }
         }
         
-        titulo = titulo.replace(/\*/g, '');
-        redacao = redacao.replace(/\*/g, '');
-        redacao = redacao.replace(/\n{3,}/g, '\n\n');
+        // Se não encontrou título, pega a primeira linha
+        if (!titulo) {
+            const linhas = aiResponseText.split('\n').filter(l => l.trim());
+            titulo = linhas[0].replace(/TÍTULO:?\s*/i, '').trim();
+            titulo = titulo.split('\n')[0].trim();
+        }
+        
+        // Limpeza final
+        titulo = titulo.replace(/\*/g, '').trim();
+        redacao = redacao.replace(/\*/g, '').trim();
+        
+        // Garante que o título NÃO contém o texto da redação
+        if (titulo.length > 200) {
+            titulo = titulo.substring(0, 200) + '...';
+        }
+        
+        console.log('📌 Título:', titulo);
+        console.log('📄 Redação (primeiros 100 chars):', redacao.substring(0, 100));
         
         return { titulo, redacao };
     }
@@ -272,6 +358,7 @@ REDAÇÃO: [texto completo da redação - sem formatação]`;
                 return;
             }
 
+            // Verifica qual texto inserir baseado no modo
             const texto = STATE.modo === 'titulo' ? STATE.tituloRedacao : STATE.textoRedacao;
             if (!texto) {
                 alert('❌ Texto não encontrado!');
@@ -411,7 +498,7 @@ REDAÇÃO: [texto completo da redação - sem formatação]`;
         if (STATE.modo === 'titulo') {
             STATE.modo = 'redacao';
             STATE.aguardandoCampo = true;
-            alert('✅ Título inserido!\n📄 Agora clique no campo de REDAÇÃO.');
+            alert('✅ Título inserido com sucesso!\n📄 Agora clique no campo de REDAÇÃO.');
         } else if (STATE.modo === 'redacao') {
             setTimeout(() => {
                 const botao = encontrarBotaoSalvar();
@@ -419,7 +506,7 @@ REDAÇÃO: [texto completo da redação - sem formatação]`;
                     botao.click();
                     console.log('✅ Salvo!');
                 } else {
-                    alert('⚠️ Redação inserida! Clique em Salvar manualmente.');
+                    alert('✅ Redação inserida com sucesso!\n⚠️ Clique em Salvar manualmente.');
                 }
             }, CONFIG.DELAY_SALVAR);
         }
@@ -439,19 +526,27 @@ REDAÇÃO: [texto completo da redação - sem formatação]`;
 
         STATE.currentSpeed = CONFIG.VELOCIDADE_PADRAO;
 
+        // Extrai o gênero
+        const genero = extrairGeneroRedacao();
+        STATE.generoRedacao = genero;
+        console.log('📝 Gênero:', genero);
+
         const tema = extrairTemaRedacao();
         if (!tema) {
             alert('❌ Tema não encontrado!');
             return;
         }
         
-        alert('✅ Tema: "' + tema + '"\n🤖 Gerando redação... Aguarde.');
+        alert('✅ Tema: "' + tema + '"\n📝 Gênero: ' + genero + '\n🤖 Gerando redação... Aguarde.');
 
-        const redacao = await gerarRedacaoComMistral(tema, STATE.maxPalavras);
+        const redacao = await gerarRedacaoComMistral(tema, STATE.maxPalavras, genero);
         if (!redacao) return;
 
         STATE.tituloRedacao = redacao.titulo;
         STATE.textoRedacao = redacao.redacao;
+
+        console.log('📌 Título separado:', STATE.tituloRedacao);
+        console.log('📄 Redação separada (tamanho):', STATE.textoRedacao.length, 'caracteres');
 
         alert('✅ Redação criada!\n🎯 Clique no campo de TÍTULO para inserir.');
 
