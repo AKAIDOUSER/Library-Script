@@ -1,19 +1,19 @@
-// AUTO DIGITADOR COM GEMINI - CORRIGIDO (TEMA CORRETO)
+// AUTO DIGITADOR COM MISTRAL - CORRIGIDO (TEMA CORRETO)
 (function() {
     'use strict';
 
-    const GEMINI_API_KEYS = [
-        "AQ.Ab8RN6JxltVwQISLYQvpUL4vjZO8LoVSwzbOl6V4tlRBytoMew",
-        "AQ.Ab8RN6IpJib85YU_qPAJsRrqW3z85vdVgTTnn64zKfoDwVWp0A", 
-        "SUA_API_KEY_3"
+    const MISTRAL_API_KEYS = [
+        "HJn0dgzp04QzEZkLnMc45lYYQWiIR6QM",
+        "", 
+        ""
     ];
     
     let currentApiKeyIndex = 0;
 
     const CONFIG = {
         NAMESPACE: '__digitadorV5__',
-        MODELO_GEMINI: 'gemini-2.0-flash',
-        API_ENDPOINT: 'https://generativelanguage.googleapis.com/v1beta/models',
+        MODELO_MISTRAL: 'mistral-large-latest',
+        API_ENDPOINT: 'https://api.mistral.ai/v1/chat/completions',
         CLASSE_TEMA: 'MuiTypography-root MuiTypography-body2 css-k1sw4y',
         DELAY_SALVAR: 500,
         VELOCIDADE_PADRAO: '10'
@@ -122,7 +122,7 @@
         }
     }
 
-    async function gerarRedacaoComGemini(tema) {
+    async function gerarRedacaoComMistral(tema) {
         const prompt = `Você é um professor de redação. Escreva uma redação dissertativa-argumentativa completa sobre o tema: "${tema}".
         
 Instruções:
@@ -140,51 +140,60 @@ REDAÇÃO: [texto completo da redação]`;
         let aiResponseText = null;
         let todasFalharam = true;
 
-        for (let i = 0; i < GEMINI_API_KEYS.length; i++) {
-            const currentKey = GEMINI_API_KEYS[currentApiKeyIndex];
+        for (let i = 0; i < MISTRAL_API_KEYS.length; i++) {
+            const currentKey = MISTRAL_API_KEYS[currentApiKeyIndex];
             
             if (!currentKey || currentKey.includes("SUA_") || currentKey.length < 30) {
                 console.warn(`⏭️ Chave #${currentApiKeyIndex + 1} é placeholder. Pulando...`);
-                currentApiKeyIndex = (currentApiKeyIndex + 1) % GEMINI_API_KEYS.length;
+                currentApiKeyIndex = (currentApiKeyIndex + 1) % MISTRAL_API_KEYS.length;
                 continue;
             }
 
-            const url = `${CONFIG.API_ENDPOINT}/${CONFIG.MODELO_GEMINI}:generateContent?key=${currentKey}`;
-            
-            console.log(`🔑 Tentando chave #${currentApiKeyIndex + 1}...`);
+            console.log(`🔑 Tentando chave Mistral #${currentApiKeyIndex + 1}...`);
 
             try {
-                const response = await fetchWithTimeout(url, {
+                const response = await fetchWithTimeout(CONFIG.API_ENDPOINT, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: { 
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${currentKey}`
+                    },
                     body: JSON.stringify({
-                        contents: [{ parts: [{ text: prompt }] }]
+                        model: CONFIG.MODELO_MISTRAL,
+                        messages: [
+                            {
+                                role: "user",
+                                content: prompt
+                            }
+                        ],
+                        temperature: 0.7,
+                        max_tokens: 2000
                     })
                 });
 
                 if (response.ok) {
                     const data = await response.json();
                     
-                    if (data.candidates && data.candidates[0] && data.candidates[0].content) {
-                        aiResponseText = data.candidates[0].content.parts[0].text;
-                        console.log(`✅ Sucesso com chave #${currentApiKeyIndex + 1}!`);
+                    if (data.choices && data.choices[0] && data.choices[0].message) {
+                        aiResponseText = data.choices[0].message.content;
+                        console.log(`✅ Sucesso com chave Mistral #${currentApiKeyIndex + 1}!`);
                         todasFalharam = false;
                         break;
                     }
                 }
 
-                const errorData = await response.json();
-                console.warn(`❌ Chave #${currentApiKeyIndex + 1} falhou: ${errorData.error?.message || 'Erro'}`);
+                const errorData = await response.json().catch(() => ({}));
+                console.warn(`❌ Chave Mistral #${currentApiKeyIndex + 1} falhou: ${errorData.error?.message || errorData.message || 'Erro'}`);
 
             } catch (error) {
-                console.warn(`❌ Erro na chave #${currentApiKeyIndex + 1}: ${error.message}`);
+                console.warn(`❌ Erro na chave Mistral #${currentApiKeyIndex + 1}: ${error.message}`);
             }
 
-            currentApiKeyIndex = (currentApiKeyIndex + 1) % GEMINI_API_KEYS.length;
+            currentApiKeyIndex = (currentApiKeyIndex + 1) % MISTRAL_API_KEYS.length;
         }
 
         if (todasFalharam || !aiResponseText) {
-            alert('❌ Todas as API Keys falharam!');
+            alert('❌ Todas as API Keys do Mistral falharam!');
             return null;
         }
 
@@ -391,9 +400,9 @@ REDAÇÃO: [texto completo da redação]`;
             return;
         }
         
-        alert('📝 Tema: "' + tema + '"\n\n🤖 Gerando redação...');
+        alert('📝 Tema: "' + tema + '"\n\n🤖 Gerando redação com Mistral...');
 
-        const redacao = await gerarRedacaoComGemini(tema);
+        const redacao = await gerarRedacaoComMistral(tema);
         if (!redacao) return;
 
         STATE.tituloRedacao = redacao.titulo;
@@ -407,7 +416,7 @@ REDAÇÃO: [texto completo da redação]`;
     }
 
     window.iniciarDigitadorV5 = iniciar;
-    console.log('🚀 Digitador V5 carregado!');
+    console.log('🚀 Digitador V5 (Mistral) carregado!');
     iniciar();
 
 })();
