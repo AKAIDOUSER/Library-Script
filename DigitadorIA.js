@@ -1,4 +1,4 @@
-// VERSÃO CORRIGIDA
+// AUTO DIGITADOR COM MISTRAL - VERSÃO FINAL
 (function() {
     'use strict';
 
@@ -57,84 +57,67 @@
     window[CONFIG.NAMESPACE] = STATE;
 
     // ============================================
-    // EXTRAIR TEMA CORRETO - MELHORADO
+    // EXTRAIR TEMA CORRETO - CORRIGIDO
     // ============================================
     function extrairTemaRedacao() {
         console.log('🔍 Procurando tema da redação...');
         
-        // Estratégia 1: Procurar elementos que contenham "TEMA:"
+        // Procura pelo elemento específico com a classe MuiTypography-body2
+        const elementosAlvo = document.querySelectorAll('p.MuiTypography-body2, p.MuiTypography-root.MuiTypography-body2');
+        
+        console.log(`📊 Elementos encontrados: ${elementosAlvo.length}`);
+        
+        for (const el of elementosAlvo) {
+            const textoCompleto = el.textContent?.trim() || '';
+            console.log('📝 Analisando:', textoCompleto);
+            
+            if (textoCompleto.toUpperCase().includes('TEMA:')) {
+                // Remove "TEMA:" e pega o texto depois
+                let temaExtraido = textoCompleto.replace(/TEMA:\s*/i, '').trim();
+                
+                // Se estiver vazio, procura no próximo elemento
+                if (!temaExtraido || temaExtraido.length < 5) {
+                    const proximoIrmao = el.nextElementSibling;
+                    if (proximoIrmao) {
+                        temaExtraido = proximoIrmao.textContent?.trim() || '';
+                    }
+                }
+                
+                // Se ainda vazio, procura no elemento pai
+                if (!temaExtraido || temaExtraido.length < 5) {
+                    const elementoPai = el.parentElement;
+                    if (elementoPai) {
+                        const textoPai = elementoPai.textContent?.trim() || '';
+                        temaExtraido = textoPai.replace(/TEMA:\s*/i, '').trim();
+                    }
+                }
+                
+                // Limpa e valida
+                temaExtraido = temaExtraido.replace(/^[:\s]+/, '').replace(/[\s]+$/, '').trim();
+                
+                if (temaExtraido && temaExtraido.length >= 10 && !/^[A-F0-9-]+$/i.test(temaExtraido)) {
+                    console.log('✅ Tema encontrado:', temaExtraido);
+                    return temaExtraido;
+                }
+            }
+        }
+        
+        // Fallback: procura qualquer elemento com "TEMA:"
         const todosElementos = document.querySelectorAll('*');
-        const candidatos = [];
-        
         for (const el of todosElementos) {
-            // Ignora elementos muito grandes ou scripts
-            if (el.tagName === 'SCRIPT' || el.tagName === 'STYLE' || el.tagName === 'HTML' || el.tagName === 'BODY') {
-                continue;
-            }
-            
-            const texto = el.textContent?.trim() || '';
-            
-            // Procura por "TEMA:" no texto
-            if (texto.includes('TEMA:') || texto.includes('Tema:') || texto.includes('tema:')) {
-                console.log('📝 Encontrado elemento com "TEMA:":', texto.substring(0, 100));
-                candidatos.push({elemento: el, texto: texto});
-            }
-            
-            // Também verifica se o elemento tem a classe específica
-            if (el.className && typeof el.className === 'string' && 
-                el.className.includes('MuiTypography-body2')) {
-                console.log('📝 Encontrado elemento com classe MuiTypography-body2:', texto.substring(0, 100));
-                if (!candidatos.find(c => c.elemento === el)) {
-                    candidatos.push({elemento: el, texto: texto});
+            if (el.children.length === 0) {
+                const texto = el.textContent?.trim() || '';
+                if (texto.toUpperCase().startsWith('TEMA:')) {
+                    const temaExtraido = texto.replace(/TEMA:\s*/i, '').trim();
+                    if (temaExtraido && temaExtraido.length >= 10) {
+                        console.log('✅ Tema encontrado (fallback):', temaExtraido);
+                        return temaExtraido;
+                    }
                 }
             }
         }
         
-        console.log(`📊 Total de candidatos encontrados: ${candidatos.length}`);
-        
-        // Analisa cada candidato para encontrar o tema
-        for (const candidato of candidatos) {
-            let textoLimpo = candidato.texto;
-            
-            // Remove "TEMA:" ou variações
-            textoLimpo = textoLimpo.replace(/TEMA:\s*/i, '');
-            textoLimpo = textoLimpo.replace(/Tema:\s*/g, '');
-            
-            // Divide por linhas e procura a linha com o tema
-            const linhas = textoLimpo.split(/[\n\r]+/).filter(l => l.trim());
-            
-            for (const linha of linhas) {
-                const linhaLimpa = linha.trim();
-                
-                // Pula linhas muito curtas (tokens, IDs)
-                if (linhaLimpa.length < 10) continue;
-                
-                // Pula se parece um token/ID (hexadecimal)
-                if (/^[A-F0-9-]+$/i.test(linhaLimpa) && linhaLimpa.length < 40) {
-                    console.log('⏭️ Pulando token:', linhaLimpa);
-                    continue;
-                }
-                
-                // Pula se é apenas números
-                if (/^\d+$/.test(linhaLimpa)) continue;
-                
-                // Se chegou aqui, é provavelmente o tema
-                console.log('✅ Tema encontrado:', linhaLimpa);
-                return linhaLimpa;
-            }
-        }
-        
-        // Fallback: procura em elementos com a classe específica
-        const elementosClasse = document.querySelectorAll('p.' + CONFIG.CLASSE_TEMA.replace(/ /g, '.'));
-        for (const el of elementosClasse) {
-            const texto = el.textContent.trim();
-            if (texto.length > 10 && !/^[A-F0-9-]+$/i.test(texto)) {
-                console.log('✅ Tema encontrado (fallback classe):', texto);
-                return texto;
-            }
-        }
-        
-        console.error('❌ Nenhum tema válido encontrado!');
+        console.error('❌ Tema não encontrado!');
         return null;
     }
 
@@ -153,24 +136,14 @@
     }
 
     function limparFormatacao(texto) {
-        // Remove marcadores de markdown como ** e ##
         texto = texto.replace(/\*\*/g, '');
         texto = texto.replace(/##/g, '');
         texto = texto.replace(/__/g, '');
-        
-        // Remove linhas em branco extras
         texto = texto.replace(/\n{3,}/g, '\n\n');
-        
-        // Remove espaços extras no início e fim de cada linha
         texto = texto.split('\n').map(linha => linha.trim()).join('\n');
-        
-        // Remove espaços extras
         texto = texto.replace(/\s+/g, ' ');
-        
-        // Corrige pontuação
         texto = texto.replace(/\s+\./g, '.');
         texto = texto.replace(/\s+,/g, ',');
-        
         return texto.trim();
     }
 
@@ -194,18 +167,17 @@ TÍTULO: [título da redação - sem formatação]
 REDAÇÃO: [texto completo da redação - sem formatação]`;
 
         let aiResponseText = null;
-        let todasFalharam = true;
 
         for (let i = 0; i < MISTRAL_API_KEYS.length; i++) {
             const currentKey = MISTRAL_API_KEYS[currentApiKeyIndex];
             
-            if (!currentKey || currentKey.includes("SUA_") || currentKey.length < 30) {
-                console.warn(`⏭️ Chave #${currentApiKeyIndex + 1} é placeholder. Pulando...`);
+            if (!currentKey || currentKey.trim() === "") {
+                console.warn(`⏭️ Chave #${currentApiKeyIndex + 1} vazia. Pulando...`);
                 currentApiKeyIndex = (currentApiKeyIndex + 1) % MISTRAL_API_KEYS.length;
                 continue;
             }
 
-            console.log(`🔑 Tentando chave Mistral #${currentApiKeyIndex + 1}...`);
+            console.log(`🔑 Tentando chave #${currentApiKeyIndex + 1}...`);
 
             try {
                 const response = await fetchWithTimeout(CONFIG.API_ENDPOINT, {
@@ -216,12 +188,7 @@ REDAÇÃO: [texto completo da redação - sem formatação]`;
                     },
                     body: JSON.stringify({
                         model: CONFIG.MODELO_MISTRAL,
-                        messages: [
-                            {
-                                role: "user",
-                                content: prompt
-                            }
-                        ],
+                        messages: [{ role: "user", content: prompt }],
                         temperature: 0.7,
                         max_tokens: Math.min(maxPalavras * 2, 4000)
                     })
@@ -229,34 +196,25 @@ REDAÇÃO: [texto completo da redação - sem formatação]`;
 
                 if (response.ok) {
                     const data = await response.json();
-                    
                     if (data.choices && data.choices[0] && data.choices[0].message) {
                         aiResponseText = data.choices[0].message.content;
-                        console.log(`✅ Sucesso com chave Mistral #${currentApiKeyIndex + 1}!`);
-                        todasFalharam = false;
+                        console.log(`✅ Sucesso!`);
                         break;
                     }
                 }
-
-                const errorData = await response.json().catch(() => ({}));
-                console.warn(`❌ Chave Mistral #${currentApiKeyIndex + 1} falhou: ${errorData.error?.message || errorData.message || 'Erro'}`);
-
             } catch (error) {
-                console.warn(`❌ Erro na chave Mistral #${currentApiKeyIndex + 1}: ${error.message}`);
+                console.warn(`❌ Erro na chave #${currentApiKeyIndex + 1}: ${error.message}`);
             }
 
             currentApiKeyIndex = (currentApiKeyIndex + 1) % MISTRAL_API_KEYS.length;
         }
 
-        if (todasFalharam || !aiResponseText) {
-            alert('❌ Todas as API Keys do Mistral falharam!');
+        if (!aiResponseText) {
+            alert('❌ Erro ao gerar redação!');
             return null;
         }
 
-        // Limpa a formatação da resposta
         aiResponseText = limparFormatacao(aiResponseText);
-        
-        console.log('📝 Resposta limpa:', aiResponseText.substring(0, 200) + '...');
 
         const tituloMatch = aiResponseText.match(/TÍTULO:\s*(.+?)(?:\n|$)/i);
         const redacaoMatch = aiResponseText.match(/REDAÇÃO:\s*([\s\S]+)/i);
@@ -268,17 +226,15 @@ REDAÇÃO: [texto completo da redação - sem formatação]`;
             titulo = limparFormatacao(tituloMatch[1].trim());
             redacao = limparFormatacao(redacaoMatch[1].trim());
         } else {
-            // Fallback: tenta encontrar TÍTULO e REDAÇÃO sem dois pontos
             const linhas = aiResponseText.split('\n').filter(l => l.trim());
             for (let i = 0; i < linhas.length; i++) {
-                if (linhas[i].toUpperCase().includes('TÍTULO') || linhas[i].toUpperCase().includes('TITULO')) {
+                if (linhas[i].toUpperCase().includes('TÍTULO')) {
                     titulo = limparFormatacao(linhas[i].replace(/TÍTULO:?\s*/i, '').trim());
-                    // Se o título estiver vazio, pega a próxima linha
                     if (!titulo && i + 1 < linhas.length) {
                         titulo = limparFormatacao(linhas[i + 1].trim());
                     }
                 }
-                if (linhas[i].toUpperCase().includes('REDAÇÃO') || linhas[i].toUpperCase().includes('REDACAO')) {
+                if (linhas[i].toUpperCase().includes('REDAÇÃO')) {
                     redacao = linhas.slice(i + 1).join('\n');
                     redacao = limparFormatacao(redacao.replace(/REDAÇÃO:?\s*/i, '').trim());
                     break;
@@ -286,30 +242,11 @@ REDAÇÃO: [texto completo da redação - sem formatação]`;
             }
         }
         
-        // Se ainda não encontrou, usa o texto todo como redação
-        if (!titulo && !redacao) {
-            const linhas = aiResponseText.split('\n').filter(l => l.trim());
-            if (linhas.length > 0) {
-                titulo = limparFormatacao(linhas[0]);
-                redacao = linhas.slice(1).join('\n');
-                redacao = limparFormatacao(redacao);
-            }
-        }
-        
-        // Verificação final: remove qualquer asterisco remanescente
         titulo = titulo.replace(/\*/g, '');
         redacao = redacao.replace(/\*/g, '');
-        
-        // Remove linhas em branco extras
         redacao = redacao.replace(/\n{3,}/g, '\n\n');
         
-        console.log('📌 Título final:', titulo);
-        console.log('📄 Redação final (primeiros 100 chars):', redacao.substring(0, 100));
-        
-        return {
-            titulo: titulo,
-            redacao: redacao
-        };
+        return { titulo, redacao };
     }
 
     function instalarListenerClique() {
@@ -393,7 +330,6 @@ REDAÇÃO: [texto completo da redação - sem formatação]`;
     function encontrarBotaoSalvar() {
         const seletores = [
             'button[type="submit"]',
-            '.MuiBox-root.css-1nuzzzk',
             'button[class*="salvar"]',
             'button[class*="save"]',
             'button[class*="submit"]',
@@ -475,7 +411,7 @@ REDAÇÃO: [texto completo da redação - sem formatação]`;
         if (STATE.modo === 'titulo') {
             STATE.modo = 'redacao';
             STATE.aguardandoCampo = true;
-            alert('📄 Agora clique no campo de REDAÇÃO.');
+            alert('✅ Título inserido!\n📄 Agora clique no campo de REDAÇÃO.');
         } else if (STATE.modo === 'redacao') {
             setTimeout(() => {
                 const botao = encontrarBotaoSalvar();
@@ -483,38 +419,33 @@ REDAÇÃO: [texto completo da redação - sem formatação]`;
                     botao.click();
                     console.log('✅ Salvo!');
                 } else {
-                    alert('⚠️ Clique em Salvar manualmente.');
+                    alert('⚠️ Redação inserida! Clique em Salvar manualmente.');
                 }
             }, CONFIG.DELAY_SALVAR);
         }
     }
 
     async function iniciar() {
-        // Pergunta quantas palavras máximas
         const palavrasInput = prompt('📝 Quantas palavras MÁXIMAS para a redação? (Padrão: 300)', '300');
         const maxPalavras = parseInt(palavrasInput) || CONFIG.MAX_PALAVRAS_PADRAO;
         
         if (maxPalavras < 50) {
-            alert('⚠️ Mínimo de 50 palavras. Usando 300 como padrão.');
             STATE.maxPalavras = 300;
         } else if (maxPalavras > 2000) {
-            alert('⚠️ Máximo de 2000 palavras. Usando 2000.');
             STATE.maxPalavras = 2000;
         } else {
             STATE.maxPalavras = maxPalavras;
         }
-        
-        console.log('📊 Palavras máximas configuradas:', STATE.maxPalavras);
-        
+
         STATE.currentSpeed = CONFIG.VELOCIDADE_PADRAO;
 
         const tema = extrairTemaRedacao();
         if (!tema) {
-            alert('❌ Tema não encontrado! Verifique o console (F12).');
+            alert('❌ Tema não encontrado!');
             return;
         }
         
-        alert('📝 Tema: "' + tema + '"\n📊 Máximo de palavras: ' + STATE.maxPalavras + '\n\n🤖 Gerando redação com Mistral...');
+        alert('✅ Tema: "' + tema + '"\n🤖 Gerando redação... Aguarde.');
 
         const redacao = await gerarRedacaoComMistral(tema, STATE.maxPalavras);
         if (!redacao) return;
@@ -522,12 +453,7 @@ REDAÇÃO: [texto completo da redação - sem formatação]`;
         STATE.tituloRedacao = redacao.titulo;
         STATE.textoRedacao = redacao.redacao;
 
-        // Mostra preview
-        console.log('📌 Título:', STATE.tituloRedacao);
-        console.log('📄 Redação:', STATE.textoRedacao);
-        console.log('📊 Palavras na redação:', STATE.textoRedacao.split(/\s+/).length);
-        
-        alert('✅ Redação gerada!\n\n📌 Título: ' + STATE.tituloRedacao + '\n📊 Palavras: ' + STATE.textoRedacao.split(/\s+/).length + '\n\n🎯 Clique no campo de TÍTULO.');
+        alert('✅ Redação criada!\n🎯 Clique no campo de TÍTULO para inserir.');
 
         STATE.modo = 'titulo';
         STATE.aguardandoCampo = true;
@@ -535,9 +461,7 @@ REDAÇÃO: [texto completo da redação - sem formatação]`;
     }
 
     window.iniciarDigitadorV5 = iniciar;
-    console.log('🚀 Digitador V5 (Mistral) carregado!');
-    
-    // Inicia automaticamente
+    console.log('🚀 Digitador carregado!');
     iniciar();
 
 })();
