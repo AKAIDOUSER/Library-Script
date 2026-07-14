@@ -1,4 +1,4 @@
-// AUTO 
+// AUTO DIGITADOR COM MISTRAL - COM AUTO-DETECÇÃO DE CAMPOS
 (function() {
     'use strict';
 
@@ -16,7 +16,7 @@
         API_ENDPOINT: 'https://api.mistral.ai/v1/chat/completions',
         CLASSE_TEMA: 'MuiTypography-root MuiTypography-body2 css-k1sw4y',
         DELAY_SALVAR: 500,
-        VELOCIDADE_PADRAO: '10',
+        VELOCIDADE: '1',
         MAX_PALAVRAS_PADRAO: 300
     };
 
@@ -28,9 +28,6 @@
                 document.removeEventListener('click', state.onDocClick, true);
             }
             if (state.typingTimeoutId) clearTimeout(state.typingTimeoutId);
-            if (state.pasteHandler) {
-                document.removeEventListener('paste', state.pasteHandler, true);
-            }
         } catch (e) {}
     }
 
@@ -45,33 +42,107 @@
         currentElement: null,
         currentText: '',
         currentIndex: 0,
-        currentSpeed: CONFIG.VELOCIDADE_PADRAO,
+        currentSpeed: CONFIG.VELOCIDADE,
         modo: 'titulo',
-        pasteHandler: null,
         tituloRedacao: '',
         textoRedacao: '',
-        usarColagem: false,
         maxPalavras: CONFIG.MAX_PALAVRAS_PADRAO,
         generoRedacao: '',
-        metodoInsercao: 'digitacao'
+        autoDeteccao: true
     };
 
     window[CONFIG.NAMESPACE] = STATE;
 
     // ============================================
-    // FORÇAR HABILITAÇÃO DE PASTE
+    // AUTO-DETECÇÃO DE CAMPOS
     // ============================================
-    function forcarHabilitacaoPaste() {
-        const forceEnableCopyPaste = (e) => {
-            e.stopImmediatePropagation();
-            return true;
-        };
-
-        ['paste', 'copy'].forEach(event => {
-            document.addEventListener(event, forceEnableCopyPaste, true);
-        });
+    function detectarCampoTitulo() {
+        console.log('🔍 Auto-detectando campo de título...');
         
-        console.log('✅ Paste/COPY forçadamente habilitados!');
+        // Procura por INPUT com as classes específicas
+        const inputs = document.querySelectorAll('input.MuiOutlinedInput-input, input.MuiInputBase-input');
+        
+        for (const input of inputs) {
+            const classes = input.className || '';
+            
+            // Verifica se é um input de texto (não password, email, etc)
+            if (input.type === 'text' && !input.placeholder) {
+                // Verifica se NÃO é uma textarea (campo de redação)
+                if (input.tagName === 'INPUT' && !classes.includes('Multiline')) {
+                    console.log('✅ Campo de título encontrado:', input);
+                    return input;
+                }
+            }
+        }
+        
+        // Fallback: primeiro input de texto vazio
+        const todosInputs = document.querySelectorAll('input[type="text"]');
+        for (const input of todosInputs) {
+            if (!input.value && !input.placeholder) {
+                console.log('✅ Campo de título (fallback):', input);
+                return input;
+            }
+        }
+        
+        console.warn('⚠️ Campo de título não encontrado automaticamente');
+        return null;
+    }
+
+    function detectarCampoRedacao() {
+        console.log('🔍 Auto-detectando campo de redação...');
+        
+        // Procura por TEXTAREA com as classes específicas
+        const textareas = document.querySelectorAll('textarea.MuiOutlinedInput-input, textarea.MuiInputBase-input');
+        
+        for (const textarea of textareas) {
+            const placeholder = textarea.placeholder || '';
+            
+            // Verifica pelo placeholder característico
+            if (placeholder.includes('Comece a escrever') || 
+                placeholder.includes('redação') ||
+                placeholder.includes('escreva')) {
+                console.log('✅ Campo de redação encontrado pelo placeholder:', textarea);
+                return textarea;
+            }
+        }
+        
+        // Fallback: procura por textarea com classe Multiline
+        const textareasMultiline = document.querySelectorAll('textarea.MuiInputBase-inputMultiline');
+        for (const textarea of textareasMultiline) {
+            console.log('✅ Campo de redação encontrado (Multiline):', textarea);
+            return textarea;
+        }
+        
+        // Segundo fallback: qualquer textarea visível
+        const todasTextareas = document.querySelectorAll('textarea');
+        for (const textarea of todasTextareas) {
+            if (textarea.offsetParent !== null) { // Verifica se está visível
+                console.log('✅ Campo de redação (fallback):', textarea);
+                return textarea;
+            }
+        }
+        
+        console.warn('⚠️ Campo de redação não encontrado automaticamente');
+        return null;
+    }
+
+    function autoInserirTexto(campo, texto) {
+        if (!campo) return false;
+        
+        console.log('🎯 Inserindo texto automaticamente no campo:', campo);
+        
+        // Foca no campo
+        campo.focus();
+        
+        // Se for input, remove readonly
+        if (campo.tagName === 'INPUT' || campo.tagName === 'TEXTAREA') {
+            campo.readOnly = false;
+        }
+        
+        // Insere o texto
+        digitarRapidamente(campo, texto);
+        
+        return true;
     }
 
     // ============================================
@@ -108,7 +179,6 @@
                 // Remove tudo após o primeiro "-"
                 if (temaExtraido.includes('-')) {
                     temaExtraido = temaExtraido.split('-')[0].trim();
-                    console.log('✂️ Tema limpo:', temaExtraido);
                 }
                 
                 if (temaExtraido && temaExtraido.length >= 5 && !/^[A-F0-9-]+$/i.test(temaExtraido)) {
@@ -128,7 +198,7 @@
                         temaExtraido = temaExtraido.split('-')[0].trim();
                     }
                     if (temaExtraido && temaExtraido.length >= 5) {
-                        console.log('✅ Tema encontrado (fallback):', temaExtraido);
+                        console.log('✅ Tema encontrado:', temaExtraido);
                         return temaExtraido;
                     }
                 }
@@ -143,7 +213,7 @@
     // EXTRAIR GÊNERO DA REDAÇÃO
     // ============================================
     function extrairGeneroRedacao() {
-        console.log('🔍 Procurando gênero da redação...');
+        console.log('🔍 Procurando gênero...');
         
         const todosElementos = document.querySelectorAll('p.MuiTypography-body1, p.MuiTypography-root.MuiTypography-body1');
         
@@ -154,7 +224,7 @@
                 const proximoIrmao = el.nextElementSibling;
                 if (proximoIrmao) {
                     const generoExtraido = proximoIrmao.textContent?.trim() || '';
-                    console.log('✅ Gênero encontrado:', generoExtraido);
+                    console.log('✅ Gênero:', generoExtraido);
                     return generoExtraido;
                 }
             }
@@ -164,12 +234,10 @@
             const texto = el.textContent?.trim() || '';
             if (texto === 'RESENHA' || texto === 'DISSERTAÇÃO' || texto === 'ARTIGO' || 
                 texto === 'CRÔNICA' || texto === 'CONTO' || texto === 'RELATO') {
-                console.log('✅ Gênero encontrado (fallback):', texto);
                 return texto;
             }
         }
         
-        console.log('⚠️ Gênero não encontrado, usando padrão: DISSERTAÇÃO');
         return 'DISSERTAÇÃO';
     }
 
@@ -193,9 +261,6 @@
         texto = texto.replace(/__/g, '');
         texto = texto.replace(/\n{3,}/g, '\n\n');
         texto = texto.split('\n').map(linha => linha.trim()).join('\n');
-        texto = texto.replace(/\s+/g, ' ');
-        texto = texto.replace(/\s+\./g, '.');
-        texto = texto.replace(/\s+,/g, ',');
         return texto.trim();
     }
 
@@ -205,53 +270,42 @@
         let prompt = '';
         
         if (genero.toUpperCase() === 'RESENHA') {
-            prompt = `Você é um especialista em redação. Escreva uma RESENHA CRÍTICA completa sobre o tema: "${tema}".
+            prompt = `Escreva uma RESENHA CRÍTICA sobre: "${tema}".
         
-Instruções IMPORTANTES:
-- NÃO use formatação markdown (sem **, sem ##, sem __)
-- Crie um título criativo e relevante (SEM asteriscos)
-- Estrutura da resenha:
-  1. Introdução com apresentação do tema/obra
-  2. Descrição e análise crítica
-  3. Pontos positivos e negativos
-  4. Conclusão com recomendação
-- Use linguagem formal e culta
-- A redação deve ter ENTRE ${minPalavras} E ${maxPalavras} palavras (NEM MENOS, NEM MAIS)
-- NÃO repita o título no corpo da redação
+REGRAS:
+- NÃO use asteriscos (**), hashtags (##) ou formatação markdown
+- Título criativo e relevante
+- Estrutura: introdução, análise, pontos positivos/negativos, conclusão
+- Linguagem formal
+- ENTRE ${minPalavras} E ${maxPalavras} palavras
 
-IMPORTANTE: Responda EXATAMENTE neste formato (sem asteriscos):
-TÍTULO: [título da resenha]
-REDAÇÃO: [texto completo da resenha]`;
-        } else if (genero.toUpperCase() === 'ARTIGO') {
-            prompt = `Você é um especialista em redação. Escreva um ARTIGO DE OPINIÃO completo sobre o tema: "${tema}".
-        
-Instruções IMPORTANTES:
-- NÃO use formatação markdown
-- Crie um título criativo e relevante
-- Estrutura do artigo:
-  1. Introdução com contextualização
-  2. Desenvolvimento com argumentos
-  3. Dados e exemplos
-  4. Conclusão com reflexão
-- A redação deve ter ENTRE ${minPalavras} E ${maxPalavras} palavras
-
-IMPORTANTE: Responda EXATAMENTE neste formato:
-TÍTULO: [título do artigo]
-REDAÇÃO: [texto completo do artigo]`;
-        } else {
-            prompt = `Você é um professor de redação. Escreva uma DISSERTAÇÃO ARGUMENTATIVA completa sobre o tema: "${tema}".
-        
-Instruções IMPORTANTES:
-- NÃO use formatação markdown
-- Crie um título criativo e relevante
-- Faça uma introdução com tese clara
-- Desenvolva em 2-3 parágrafos com argumentos
-- Conclusão com proposta de intervenção
-- A redação deve ter ENTRE ${minPalavras} E ${maxPalavras} palavras
-
-IMPORTANTE: Responda EXATAMENTE neste formato:
+FORMATO EXATO:
 TÍTULO: [título]
-REDAÇÃO: [texto completo]`;
+REDAÇÃO: [texto]`;
+        } else if (genero.toUpperCase() === 'ARTIGO') {
+            prompt = `Escreva um ARTIGO DE OPINIÃO sobre: "${tema}".
+        
+REGRAS:
+- NÃO use asteriscos ou formatação markdown
+- Título criativo
+- Estrutura: introdução, argumentos, exemplos, conclusão
+- ENTRE ${minPalavras} E ${maxPalavras} palavras
+
+FORMATO EXATO:
+TÍTULO: [título]
+REDAÇÃO: [texto]`;
+        } else {
+            prompt = `Escreva uma DISSERTAÇÃO ARGUMENTATIVA sobre: "${tema}".
+        
+REGRAS:
+- NÃO use asteriscos ou formatação markdown
+- Título criativo
+- Introdução com tese, 2-3 parágrafos de desenvolvimento, conclusão com intervenção
+- ENTRE ${minPalavras} E ${maxPalavras} palavras
+
+FORMATO EXATO:
+TÍTULO: [título]
+REDAÇÃO: [texto]`;
         }
 
         let aiResponseText = null;
@@ -260,12 +314,9 @@ REDAÇÃO: [texto completo]`;
             const currentKey = MISTRAL_API_KEYS[currentApiKeyIndex];
             
             if (!currentKey || currentKey.trim() === "") {
-                console.warn(`⏭️ Chave #${currentApiKeyIndex + 1} vazia. Pulando...`);
                 currentApiKeyIndex = (currentApiKeyIndex + 1) % MISTRAL_API_KEYS.length;
                 continue;
             }
-
-            console.log(`🔑 Tentando chave #${currentApiKeyIndex + 1}...`);
 
             try {
                 const response = await fetchWithTimeout(CONFIG.API_ENDPOINT, {
@@ -286,12 +337,11 @@ REDAÇÃO: [texto completo]`;
                     const data = await response.json();
                     if (data.choices && data.choices[0] && data.choices[0].message) {
                         aiResponseText = data.choices[0].message.content;
-                        console.log(`✅ Sucesso!`);
                         break;
                     }
                 }
             } catch (error) {
-                console.warn(`❌ Erro na chave #${currentApiKeyIndex + 1}: ${error.message}`);
+                console.warn('Erro na chave:', error.message);
             }
 
             currentApiKeyIndex = (currentApiKeyIndex + 1) % MISTRAL_API_KEYS.length;
@@ -311,39 +361,30 @@ REDAÇÃO: [texto completo]`;
         let redacao = '';
         
         if (tituloMatch) {
-            titulo = limparFormatacao(tituloMatch[1].trim());
-            titulo = titulo.split('\n')[0].trim();
+            titulo = tituloMatch[1].trim().split('\n')[0].trim();
         }
         
         if (redacaoMatch) {
-            redacao = limparFormatacao(redacaoMatch[1].trim());
-            redacao = redacao.replace(/TÍTULO:.*?\n/g, '');
+            redacao = redacaoMatch[1].trim();
         } else {
             const linhas = aiResponseText.split('\n');
-            const indexRedacao = linhas.findIndex(l => l.toUpperCase().includes('REDAÇÃO'));
-            if (indexRedacao >= 0) {
-                redacao = linhas.slice(indexRedacao + 1).join('\n');
-                redacao = limparFormatacao(redacao);
-            }
+            const idx = linhas.findIndex(l => l.toUpperCase().includes('REDAÇÃO'));
+            if (idx >= 0) redacao = linhas.slice(idx + 1).join('\n').trim();
         }
         
         if (!titulo) {
             const linhas = aiResponseText.split('\n').filter(l => l.trim());
             titulo = linhas[0].replace(/TÍTULO:?\s*/i, '').trim();
-            titulo = titulo.split('\n')[0].trim();
         }
         
         titulo = titulo.replace(/\*/g, '').trim();
         redacao = redacao.replace(/\*/g, '').trim();
         
-        if (titulo.length > 200) {
-            titulo = titulo.substring(0, 200) + '...';
-        }
+        if (titulo.length > 200) titulo = titulo.substring(0, 200);
         
-        const palavrasRedacao = redacao.split(/\s+/).length;
-        console.log('📊 Palavras na redação:', palavrasRedacao);
+        const palavras = redacao.split(/\s+/).length;
         
-        return { titulo, redacao, palavras: palavrasRedacao };
+        return { titulo, redacao, palavras };
     }
 
     function instalarListenerClique() {
@@ -364,7 +405,7 @@ REDAÇÃO: [texto completo]`;
 
             const el = e.target;
             if (!el || (!el.isContentEditable && el.tagName !== 'INPUT' && el.tagName !== 'TEXTAREA')) {
-                alert('❌ Campo inválido! Clique em um INPUT ou TEXTAREA.');
+                alert('❌ Campo inválido!');
                 STATE.aguardandoCampo = true;
                 return;
             }
@@ -375,156 +416,14 @@ REDAÇÃO: [texto completo]`;
                 return;
             }
 
-            if (STATE.metodoInsercao === 'colagem') {
-                simularPasteManual(el, texto);
-            } else {
-                inserirTextoNoCampo(el, texto);
-            }
+            digitarRapidamente(el, texto);
         };
 
         document.addEventListener('click', STATE.onDocClick, true);
         STATE.listenerInstalado = true;
     }
 
-    // ============================================
-    // SIMULAR PASTE MANUAL (como se o usuário colasse)
-    // ============================================
-    async function simularPasteManual(el, texto) {
-        try {
-            // Força habilitação de paste
-            forcarHabilitacaoPaste();
-            
-            // Foca no elemento
-            el.focus();
-            
-            // Tenta usar a API Clipboard para escrever o texto
-            try {
-                await navigator.clipboard.writeText(texto);
-                console.log('📋 Texto copiado para clipboard');
-            } catch (err) {
-                console.warn('⚠️ Não foi possível usar clipboard API:', err);
-            }
-            
-            // Cria um evento de paste simulado
-            const pasteEvent = new ClipboardEvent('paste', {
-                bubbles: true,
-                cancelable: true,
-                clipboardData: new DataTransfer()
-            });
-            
-            // Adiciona o texto ao clipboardData
-            pasteEvent.clipboardData.setData('text/plain', texto);
-            
-            // Dispara o evento de paste no elemento
-            const dispatched = el.dispatchEvent(pasteEvent);
-            
-            console.log('📋 Evento paste disparado:', dispatched);
-            
-            if (!dispatched) {
-                // Se o evento foi cancelado, tenta método alternativo
-                console.warn('⚠️ Evento paste cancelado, usando método alternativo');
-                
-                const isInputEl = (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA');
-                
-                if (isInputEl) {
-                    // Para inputs, simula a digitação do texto
-                    const originalValue = el.value;
-                    const pos = el.selectionStart || 0;
-                    const antes = originalValue.substring(0, pos);
-                    const depois = originalValue.substring(el.selectionEnd || pos);
-                    el.value = antes + texto + depois;
-                    
-                    // Dispara eventos
-                    el.dispatchEvent(new Event('input', { bubbles: true }));
-                    el.dispatchEvent(new Event('change', { bubbles: true }));
-                } else if (el.isContentEditable) {
-                    // Para contenteditable
-                    document.execCommand('selectAll', false, null);
-                    document.execCommand('insertText', false, texto);
-                } else {
-                    // Fallback
-                    el.innerText = texto;
-                }
-            }
-            
-            console.log('✅ Texto colado com sucesso!');
-            
-            // Continua o fluxo
-            setTimeout(() => continuarFluxo(), 500);
-            
-        } catch (error) {
-            console.error('❌ Erro ao simular paste:', error);
-            // Fallback para digitação
-            alert('⚠️ Erro na colagem. Usando método de digitação...');
-            inserirTextoNoCampo(el, texto);
-        }
-    }
-
-    function inserirCharInput(el, ch) {
-        try {
-            const pos = typeof el.selectionStart === 'number' ? el.selectionStart : el.value.length;
-            if (typeof el.setRangeText === 'function') {
-                el.setRangeText(ch, pos, pos, 'end');
-            } else {
-                const v = el.value || '';
-                el.value = v.slice(0, pos) + ch + v.slice(pos);
-                try { el.setSelectionRange(pos + 1, pos + 1); } catch (_) {}
-            }
-        } catch (err) {
-            el.value = (el.value || '') + ch;
-        }
-    }
-
-    function inserirCharContentEditable(el, ch) {
-        try {
-            const doc = el.ownerDocument || document;
-            const sel = doc.getSelection ? doc.getSelection() : null;
-            let range;
-            if (sel && sel.rangeCount) {
-                range = sel.getRangeAt(0).cloneRange();
-                if (!el.contains(range.commonAncestorContainer)) range = null;
-            }
-            if (!range) {
-                range = doc.createRange();
-                range.selectNodeContents(el);
-                range.collapse(false);
-            }
-            const txtNode = doc.createTextNode(ch);
-            range.insertNode(txtNode);
-            range.setStartAfter(txtNode);
-            range.collapse(true);
-            if (sel) {
-                sel.removeAllRanges();
-                sel.addRange(range);
-            }
-        } catch (err) {
-            el.innerText = (el.innerText || '') + ch;
-        }
-    }
-
-    function encontrarBotaoSalvar() {
-        const seletores = [
-            'button[type="submit"]',
-            'button[class*="salvar"]',
-            'button[class*="save"]',
-            'button[class*="submit"]',
-            'button[class*="enviar"]'
-        ];
-        for (const seletor of seletores) {
-            try {
-                const el = document.querySelector(seletor);
-                if (el) return el;
-            } catch (_) {}
-        }
-        const botoes = document.querySelectorAll('button');
-        for (const btn of botoes) {
-            const texto = (btn.textContent || '').toLowerCase();
-            if (/salvar|save|enviar|publicar/.test(texto)) return btn;
-        }
-        return null;
-    }
-
-    function inserirTextoNoCampo(el, texto) {
+    function digitarRapidamente(el, texto) {
         if (STATE.typingTimeoutId) {
             clearTimeout(STATE.typingTimeoutId);
             STATE.typingTimeoutId = null;
@@ -537,56 +436,97 @@ REDAÇÃO: [texto completo]`;
         const isInputEl = (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA');
         const isContentEditable = !!el.isContentEditable;
 
-        let prevReadOnly = null;
         try {
             if (isInputEl) {
-                prevReadOnly = el.readOnly;
-                el.readOnly = true;
-                el.focus({ preventScroll: true });
-                const len = el.value ? el.value.length : 0;
-                el.setSelectionRange(len, len);
+                el.readOnly = false;
+                el.focus();
+                if (el.value) el.setSelectionRange(el.value.length, el.value.length);
             }
         } catch (_) {}
 
         let i = 0;
+        const velocidade = parseInt(STATE.currentSpeed, 10) || 1;
 
-        function getIntervalo() {
-            return parseInt(STATE.currentSpeed, 10) || 10;
-        }
-
-        function digitarProximo() {
-            if (STATE.paused) return;
+        function digitar() {
             if (i < texto.length) {
                 const ch = texto[i++];
-                if (isInputEl) inserirCharInput(el, ch);
-                else if (isContentEditable) inserirCharContentEditable(el, ch);
-                else try { el.innerText = (el.innerText || '') + ch; } catch (_) {}
-                try { el.dispatchEvent(new Event('input', { bubbles: true })); } catch (_) {}
-                STATE.currentIndex = i;
-                STATE.typingTimeoutId = setTimeout(digitarProximo, getIntervalo());
-            } else {
-                STATE.typingTimeoutId = null;
+                
                 try {
                     if (isInputEl) {
-                        el.blur();
-                        if (prevReadOnly !== null) el.readOnly = prevReadOnly;
-                        else el.readOnly = false;
+                        const pos = el.selectionStart || el.value.length;
+                        if (typeof el.setRangeText === 'function') {
+                            el.setRangeText(ch, pos, pos, 'end');
+                        } else {
+                            el.value = el.value.slice(0, pos) + ch + el.value.slice(pos);
+                            el.setSelectionRange(pos + 1, pos + 1);
+                        }
+                    } else if (isContentEditable) {
+                        const doc = el.ownerDocument || document;
+                        const sel = doc.getSelection();
+                        let range;
+                        if (sel && sel.rangeCount) {
+                            range = sel.getRangeAt(0).cloneRange();
+                            if (!el.contains(range.commonAncestorContainer)) range = null;
+                        }
+                        if (!range) {
+                            range = doc.createRange();
+                            range.selectNodeContents(el);
+                            range.collapse(false);
+                        }
+                        range.insertNode(doc.createTextNode(ch));
+                        range.collapse(false);
+                        if (sel) {
+                            sel.removeAllRanges();
+                            sel.addRange(range);
+                        }
+                    } else {
+                        el.innerText = (el.innerText || '') + ch;
                     }
+                    
+                    el.dispatchEvent(new Event('input', { bubbles: true }));
                 } catch (_) {}
+                
+                STATE.currentIndex = i;
+                STATE.typingTimeoutId = setTimeout(digitar, velocidade);
+            } else {
+                STATE.typingTimeoutId = null;
                 el.dispatchEvent(new Event('input', { bubbles: true }));
                 el.dispatchEvent(new Event('change', { bubbles: true }));
                 continuarFluxo();
             }
         }
 
-        STATE.typingTimeoutId = setTimeout(digitarProximo, getIntervalo());
+        STATE.typingTimeoutId = setTimeout(digitar, velocidade);
+    }
+
+    function encontrarBotaoSalvar() {
+        const botoes = document.querySelectorAll('button');
+        for (const btn of botoes) {
+            const texto = (btn.textContent || '').toLowerCase();
+            if (/salvar|save|enviar|publicar/.test(texto)) return btn;
+        }
+        return document.querySelector('button[type="submit"]');
     }
 
     function continuarFluxo() {
         if (STATE.modo === 'titulo') {
             STATE.modo = 'redacao';
+            
+            // Tenta auto-detectar o campo de redação
+            if (STATE.autoDeteccao) {
+                const campoRedacao = detectarCampoRedacao();
+                if (campoRedacao) {
+                    console.log('🎯 Auto-inserindo redação...');
+                    setTimeout(() => {
+                        autoInserirTexto(campoRedacao, STATE.textoRedacao);
+                    }, 500);
+                    return;
+                }
+            }
+            
+            // Fallback: modo manual
             STATE.aguardandoCampo = true;
-            alert('✅ Título inserido com sucesso!\n📄 Agora clique no campo de REDAÇÃO.');
+            alert('✅ Título inserido!\n📄 Agora clique no campo de REDAÇÃO.');
         } else if (STATE.modo === 'redacao') {
             setTimeout(() => {
                 const botao = encontrarBotaoSalvar();
@@ -594,63 +534,56 @@ REDAÇÃO: [texto completo]`;
                     botao.click();
                     console.log('✅ Salvo!');
                 } else {
-                    alert('✅ Redação inserida com sucesso!\n⚠️ Clique em Salvar manualmente.');
+                    alert('✅ Redação inserida!\n⚠️ Clique em Salvar manualmente.');
                 }
             }, CONFIG.DELAY_SALVAR);
         }
     }
 
     async function iniciar() {
-        // Pergunta o método usando confirm (nativo do navegador)
-        const usarColagem = confirm('🔧 Método de inserção:\n\nClique em OK para COLAGEM (texto colado de uma vez)\nClique em CANCELAR para DIGITAÇÃO (caractere por caractere)');
-        
-        STATE.metodoInsercao = usarColagem ? 'colagem' : 'digitacao';
-        console.log('🔧 Método selecionado:', STATE.metodoInsercao);
-        
-        if (STATE.metodoInsercao === 'colagem') {
-            forcarHabilitacaoPaste();
-        }
-
         const palavrasInput = prompt('📝 Quantas palavras para a redação? (Padrão: 300)', '300');
-        const maxPalavras = parseInt(palavrasInput) || CONFIG.MAX_PALAVRAS_PADRAO;
-        
-        if (maxPalavras < 50) {
-            STATE.maxPalavras = 300;
-        } else if (maxPalavras > 2000) {
-            STATE.maxPalavras = 2000;
-        } else {
-            STATE.maxPalavras = maxPalavras;
-        }
+        STATE.maxPalavras = parseInt(palavrasInput) || CONFIG.MAX_PALAVRAS_PADRAO;
+        if (STATE.maxPalavras < 50) STATE.maxPalavras = 300;
+        if (STATE.maxPalavras > 2000) STATE.maxPalavras = 2000;
 
-        STATE.currentSpeed = CONFIG.VELOCIDADE_PADRAO;
+        STATE.currentSpeed = CONFIG.VELOCIDADE;
 
-        const genero = extrairGeneroRedacao();
-        STATE.generoRedacao = genero;
-
+        STATE.generoRedacao = extrairGeneroRedacao();
         const tema = extrairTemaRedacao();
+        
         if (!tema) {
             alert('❌ Tema não encontrado!');
             return;
         }
         
-        const metodoNome = STATE.metodoInsercao === 'colagem' ? 'Colagem' : 'Digitação';
-        alert('✅ Tema: "' + tema + '"\n📝 Gênero: ' + genero + '\n📊 Palavras: ' + STATE.maxPalavras + '\n🔧 Método: ' + metodoNome + '\n🤖 Gerando redação... Aguarde.');
+        alert('✅ Tema: "' + tema + '"\n📝 Gênero: ' + STATE.generoRedacao + '\n📊 Palavras: ' + STATE.maxPalavras + '\n⚡ Velocidade máxima\n🤖 Gerando redação...');
 
-        const redacao = await gerarRedacaoComMistral(tema, STATE.maxPalavras, genero);
+        const redacao = await gerarRedacaoComMistral(tema, STATE.maxPalavras, STATE.generoRedacao);
         if (!redacao) return;
 
         STATE.tituloRedacao = redacao.titulo;
         STATE.textoRedacao = redacao.redacao;
 
-        alert('✅ Redação criada! (' + redacao.palavras + ' palavras)\n🎯 Clique no campo de TÍTULO para inserir.');
-
-        STATE.modo = 'titulo';
-        STATE.aguardandoCampo = true;
-        instalarListenerClique();
+        // Tenta auto-detectar o campo de título
+        const campoTitulo = detectarCampoTitulo();
+        
+        if (campoTitulo) {
+            alert('✅ Redação criada! (' + redacao.palavras + ' palavras)\n🎯 Inserindo automaticamente no campo de TÍTULO...');
+            
+            STATE.modo = 'titulo';
+            STATE.aguardandoCampo = false;
+            autoInserirTexto(campoTitulo, STATE.tituloRedacao);
+        } else {
+            alert('✅ Redação criada! (' + redacao.palavras + ' palavras)\n🎯 Clique no campo de TÍTULO.');
+            
+            STATE.modo = 'titulo';
+            STATE.aguardandoCampo = true;
+            instalarListenerClique();
+        }
     }
 
     window.iniciarDigitadorV5 = iniciar;
-    console.log('🚀 Digitador carregado!');
+    console.log('🚀 Digitador com auto-detecção carregado!');
     iniciar();
 
 })();
