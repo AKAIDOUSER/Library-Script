@@ -1,4 +1,4 @@
-// AUTO DIGITADOR COM MISTRAL - VERSÃO FINAL CORRIGIDA
+// AUTO 
 (function() {
     'use strict';
 
@@ -53,7 +53,7 @@
         usarColagem: false,
         maxPalavras: CONFIG.MAX_PALAVRAS_PADRAO,
         generoRedacao: '',
-        metodoInsercao: 'digitacao' // 'digitacao' ou 'colagem'
+        metodoInsercao: 'digitacao'
     };
 
     window[CONFIG.NAMESPACE] = STATE;
@@ -75,7 +75,7 @@
     }
 
     // ============================================
-    // EXTRAIR TEMA CORRETO - CORRIGIDO (REMOVE APÓS PRIMEIRO -)
+    // EXTRAIR TEMA CORRETO
     // ============================================
     function extrairTemaRedacao() {
         console.log('🔍 Procurando tema da redação...');
@@ -105,11 +105,10 @@
                 
                 temaExtraido = temaExtraido.replace(/^[:\s]+/, '').replace(/[\s]+$/, '').trim();
                 
-                // CORREÇÃO: Remove tudo após o primeiro "-" (informações de série/trimestre)
+                // Remove tudo após o primeiro "-"
                 if (temaExtraido.includes('-')) {
-                    const partes = temaExtraido.split('-');
-                    temaExtraido = partes[0].trim();
-                    console.log('✂️ Tema após remover informações extras:', temaExtraido);
+                    temaExtraido = temaExtraido.split('-')[0].trim();
+                    console.log('✂️ Tema limpo:', temaExtraido);
                 }
                 
                 if (temaExtraido && temaExtraido.length >= 5 && !/^[A-F0-9-]+$/i.test(temaExtraido)) {
@@ -125,12 +124,9 @@
                 const texto = el.textContent?.trim() || '';
                 if (texto.toUpperCase().startsWith('TEMA:')) {
                     let temaExtraido = texto.replace(/TEMA:\s*/i, '').trim();
-                    
-                    // Remove tudo após o primeiro "-"
                     if (temaExtraido.includes('-')) {
                         temaExtraido = temaExtraido.split('-')[0].trim();
                     }
-                    
                     if (temaExtraido && temaExtraido.length >= 5) {
                         console.log('✅ Tema encontrado (fallback):', temaExtraido);
                         return temaExtraido;
@@ -155,8 +151,6 @@
             const textoCompleto = el.textContent?.trim() || '';
             
             if (textoCompleto.toUpperCase().includes('GÊNERO') || textoCompleto.toUpperCase().includes('GENERO')) {
-                console.log('📝 Elemento "Gênero:" encontrado:', textoCompleto);
-                
                 const proximoIrmao = el.nextElementSibling;
                 if (proximoIrmao) {
                     const generoExtraido = proximoIrmao.textContent?.trim() || '';
@@ -206,7 +200,6 @@
     }
 
     async function gerarRedacaoComMistral(tema, maxPalavras, genero) {
-        // Calcula uma faixa de palavras (entre 80% e 100% do máximo)
         const minPalavras = Math.floor(maxPalavras * 0.8);
         
         let prompt = '';
@@ -216,7 +209,6 @@
         
 Instruções IMPORTANTES:
 - NÃO use formatação markdown (sem **, sem ##, sem __)
-- NÃO coloque asteriscos no título ou no texto
 - Crie um título criativo e relevante (SEM asteriscos)
 - Estrutura da resenha:
   1. Introdução com apresentação do tema/obra
@@ -228,40 +220,38 @@ Instruções IMPORTANTES:
 - NÃO repita o título no corpo da redação
 
 IMPORTANTE: Responda EXATAMENTE neste formato (sem asteriscos):
-TÍTULO: [título da resenha - sem formatação]
-REDAÇÃO: [texto completo da resenha - sem formatação]`;
+TÍTULO: [título da resenha]
+REDAÇÃO: [texto completo da resenha]`;
         } else if (genero.toUpperCase() === 'ARTIGO') {
             prompt = `Você é um especialista em redação. Escreva um ARTIGO DE OPINIÃO completo sobre o tema: "${tema}".
         
 Instruções IMPORTANTES:
-- NÃO use formatação markdown (sem **, sem ##, sem __)
-- Crie um título criativo e relevante (SEM asteriscos)
+- NÃO use formatação markdown
+- Crie um título criativo e relevante
 - Estrutura do artigo:
   1. Introdução com contextualização
   2. Desenvolvimento com argumentos
   3. Dados e exemplos
   4. Conclusão com reflexão
-- Use linguagem formal e culta
-- A redação deve ter ENTRE ${minPalavras} E ${maxPalavras} palavras (NEM MENOS, NEM MAIS)
+- A redação deve ter ENTRE ${minPalavras} E ${maxPalavras} palavras
 
-IMPORTANTE: Responda EXATAMENTE neste formato (sem asteriscos):
-TÍTULO: [título do artigo - sem formatação]
-REDAÇÃO: [texto completo do artigo - sem formatação]`;
+IMPORTANTE: Responda EXATAMENTE neste formato:
+TÍTULO: [título do artigo]
+REDAÇÃO: [texto completo do artigo]`;
         } else {
             prompt = `Você é um professor de redação. Escreva uma DISSERTAÇÃO ARGUMENTATIVA completa sobre o tema: "${tema}".
         
 Instruções IMPORTANTES:
-- NÃO use formatação markdown (sem **, sem ##, sem __)
-- Crie um título criativo e relevante (SEM asteriscos)
+- NÃO use formatação markdown
+- Crie um título criativo e relevante
 - Faça uma introdução com tese clara
 - Desenvolva em 2-3 parágrafos com argumentos
 - Conclusão com proposta de intervenção
-- Use linguagem formal e culta
-- A redação deve ter ENTRE ${minPalavras} E ${maxPalavras} palavras (NEM MENOS, NEM MAIS)
+- A redação deve ter ENTRE ${minPalavras} E ${maxPalavras} palavras
 
-IMPORTANTE: Responda EXATAMENTE neste formato (sem asteriscos):
-TÍTULO: [título - sem formatação]
-REDAÇÃO: [texto completo - sem formatação]`;
+IMPORTANTE: Responda EXATAMENTE neste formato:
+TÍTULO: [título]
+REDAÇÃO: [texto completo]`;
         }
 
         let aiResponseText = null;
@@ -350,79 +340,10 @@ REDAÇÃO: [texto completo - sem formatação]`;
             titulo = titulo.substring(0, 200) + '...';
         }
         
-        // Conta palavras
         const palavrasRedacao = redacao.split(/\s+/).length;
         console.log('📊 Palavras na redação:', palavrasRedacao);
         
         return { titulo, redacao, palavras: palavrasRedacao };
-    }
-
-    // ============================================
-    // POPUP DE SELEÇÃO DE MÉTODO
-    // ============================================
-    function mostrarPopupSelecaoMetodo() {
-        return new Promise((resolve) => {
-            const overlay = document.createElement('div');
-            overlay.style.cssText = `
-                position: fixed;
-                top: 0;
-                left: 0;
-                width: 100%;
-                height: 100%;
-                background: rgba(0,0,0,0.5);
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                z-index: 999999;
-            `;
-            
-            const popup = document.createElement('div');
-            popup.style.cssText = `
-                background: white;
-                padding: 30px;
-                border-radius: 15px;
-                box-shadow: 0 10px 40px rgba(0,0,0,0.3);
-                text-align: center;
-                max-width: 400px;
-                font-family: Arial, sans-serif;
-            `;
-            
-            popup.innerHTML = `
-                <h2 style="margin: 0 0 20px 0; color: #333;">🔧 Método de Inserção</h2>
-                <p style="margin: 10px 0; color: #666;">Escolha como o texto será inserido:</p>
-                <select id="metodoSelect" style="
-                    width: 100%;
-                    padding: 10px;
-                    margin: 15px 0;
-                    border: 2px solid #4CAF50;
-                    border-radius: 8px;
-                    font-size: 16px;
-                    cursor: pointer;
-                ">
-                    <option value="digitacao">⌨️ Digitação (caractere por caractere)</option>
-                    <option value="colagem">📋 Colagem (Colar texto de uma vez)</option>
-                </select>
-                <button id="confirmarMetodo" style="
-                    background: #4CAF50;
-                    color: white;
-                    border: none;
-                    padding: 12px 30px;
-                    border-radius: 8px;
-                    font-size: 16px;
-                    cursor: pointer;
-                    margin-top: 10px;
-                ">Confirmar</button>
-            `;
-            
-            overlay.appendChild(popup);
-            document.body.appendChild(overlay);
-            
-            document.getElementById('confirmarMetodo').onclick = () => {
-                const metodo = document.getElementById('metodoSelect').value;
-                document.body.removeChild(overlay);
-                resolve(metodo);
-            };
-        });
     }
 
     function instalarListenerClique() {
@@ -455,7 +376,7 @@ REDAÇÃO: [texto completo - sem formatação]`;
             }
 
             if (STATE.metodoInsercao === 'colagem') {
-                colarTextoNoCampo(el, texto);
+                simularPasteManual(el, texto);
             } else {
                 inserirTextoNoCampo(el, texto);
             }
@@ -466,34 +387,64 @@ REDAÇÃO: [texto completo - sem formatação]`;
     }
 
     // ============================================
-    // MÉTODO DE COLAGEM
+    // SIMULAR PASTE MANUAL (como se o usuário colasse)
     // ============================================
-    function colarTextoNoCampo(el, texto) {
-        // Força habilitação de paste antes de colar
-        forcarHabilitacaoPaste();
-        
-        const isInputEl = (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA');
-        const isContentEditable = !!el.isContentEditable;
-        
+    async function simularPasteManual(el, texto) {
         try {
+            // Força habilitação de paste
+            forcarHabilitacaoPaste();
+            
+            // Foca no elemento
             el.focus();
             
-            if (isInputEl) {
-                // Para inputs, seleciona todo o texto e substitui
-                el.select();
-                el.value = texto;
-                el.dispatchEvent(new Event('input', { bubbles: true }));
-                el.dispatchEvent(new Event('change', { bubbles: true }));
-            } else if (isContentEditable) {
-                // Para contenteditable, limpa e insere
-                el.innerHTML = '';
-                const textNode = document.createTextNode(texto);
-                el.appendChild(textNode);
-                el.dispatchEvent(new Event('input', { bubbles: true }));
-            } else {
-                // Fallback
-                el.innerText = texto;
-                el.dispatchEvent(new Event('input', { bubbles: true }));
+            // Tenta usar a API Clipboard para escrever o texto
+            try {
+                await navigator.clipboard.writeText(texto);
+                console.log('📋 Texto copiado para clipboard');
+            } catch (err) {
+                console.warn('⚠️ Não foi possível usar clipboard API:', err);
+            }
+            
+            // Cria um evento de paste simulado
+            const pasteEvent = new ClipboardEvent('paste', {
+                bubbles: true,
+                cancelable: true,
+                clipboardData: new DataTransfer()
+            });
+            
+            // Adiciona o texto ao clipboardData
+            pasteEvent.clipboardData.setData('text/plain', texto);
+            
+            // Dispara o evento de paste no elemento
+            const dispatched = el.dispatchEvent(pasteEvent);
+            
+            console.log('📋 Evento paste disparado:', dispatched);
+            
+            if (!dispatched) {
+                // Se o evento foi cancelado, tenta método alternativo
+                console.warn('⚠️ Evento paste cancelado, usando método alternativo');
+                
+                const isInputEl = (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA');
+                
+                if (isInputEl) {
+                    // Para inputs, simula a digitação do texto
+                    const originalValue = el.value;
+                    const pos = el.selectionStart || 0;
+                    const antes = originalValue.substring(0, pos);
+                    const depois = originalValue.substring(el.selectionEnd || pos);
+                    el.value = antes + texto + depois;
+                    
+                    // Dispara eventos
+                    el.dispatchEvent(new Event('input', { bubbles: true }));
+                    el.dispatchEvent(new Event('change', { bubbles: true }));
+                } else if (el.isContentEditable) {
+                    // Para contenteditable
+                    document.execCommand('selectAll', false, null);
+                    document.execCommand('insertText', false, texto);
+                } else {
+                    // Fallback
+                    el.innerText = texto;
+                }
             }
             
             console.log('✅ Texto colado com sucesso!');
@@ -502,9 +453,9 @@ REDAÇÃO: [texto completo - sem formatação]`;
             setTimeout(() => continuarFluxo(), 500);
             
         } catch (error) {
-            console.error('❌ Erro ao colar:', error);
-            alert('❌ Erro ao colar texto. Tentando método alternativo...');
+            console.error('❌ Erro ao simular paste:', error);
             // Fallback para digitação
+            alert('⚠️ Erro na colagem. Usando método de digitação...');
             inserirTextoNoCampo(el, texto);
         }
     }
@@ -650,13 +601,13 @@ REDAÇÃO: [texto completo - sem formatação]`;
     }
 
     async function iniciar() {
-        // Mostra popup para escolher método
-        const metodo = await mostrarPopupSelecaoMetodo();
-        STATE.metodoInsercao = metodo;
-        console.log('🔧 Método selecionado:', metodo);
+        // Pergunta o método usando confirm (nativo do navegador)
+        const usarColagem = confirm('🔧 Método de inserção:\n\nClique em OK para COLAGEM (texto colado de uma vez)\nClique em CANCELAR para DIGITAÇÃO (caractere por caractere)');
         
-        // Se for colagem, força habilitação de paste
-        if (metodo === 'colagem') {
+        STATE.metodoInsercao = usarColagem ? 'colagem' : 'digitacao';
+        console.log('🔧 Método selecionado:', STATE.metodoInsercao);
+        
+        if (STATE.metodoInsercao === 'colagem') {
             forcarHabilitacaoPaste();
         }
 
@@ -682,7 +633,8 @@ REDAÇÃO: [texto completo - sem formatação]`;
             return;
         }
         
-        alert('✅ Tema: "' + tema + '"\n📝 Gênero: ' + genero + '\n📊 Palavras: ' + STATE.maxPalavras + '\n🔧 Método: ' + (metodo === 'digitacao' ? 'Digitação' : 'Colagem') + '\n🤖 Gerando redação... Aguarde.');
+        const metodoNome = STATE.metodoInsercao === 'colagem' ? 'Colagem' : 'Digitação';
+        alert('✅ Tema: "' + tema + '"\n📝 Gênero: ' + genero + '\n📊 Palavras: ' + STATE.maxPalavras + '\n🔧 Método: ' + metodoNome + '\n🤖 Gerando redação... Aguarde.');
 
         const redacao = await gerarRedacaoComMistral(tema, STATE.maxPalavras, genero);
         if (!redacao) return;
