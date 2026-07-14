@@ -52,13 +52,30 @@
         textoRedacao: '',
         usarColagem: false,
         maxPalavras: CONFIG.MAX_PALAVRAS_PADRAO,
-        generoRedacao: ''
+        generoRedacao: '',
+        metodoInsercao: 'digitacao' // 'digitacao' ou 'colagem'
     };
 
     window[CONFIG.NAMESPACE] = STATE;
 
     // ============================================
-    // EXTRAIR TEMA CORRETO
+    // FORÇAR HABILITAÇÃO DE PASTE
+    // ============================================
+    function forcarHabilitacaoPaste() {
+        const forceEnableCopyPaste = (e) => {
+            e.stopImmediatePropagation();
+            return true;
+        };
+
+        ['paste', 'copy'].forEach(event => {
+            document.addEventListener(event, forceEnableCopyPaste, true);
+        });
+        
+        console.log('✅ Paste/COPY forçadamente habilitados!');
+    }
+
+    // ============================================
+    // EXTRAIR TEMA CORRETO - CORRIGIDO (REMOVE APÓS PRIMEIRO -)
     // ============================================
     function extrairTemaRedacao() {
         console.log('🔍 Procurando tema da redação...');
@@ -88,7 +105,14 @@
                 
                 temaExtraido = temaExtraido.replace(/^[:\s]+/, '').replace(/[\s]+$/, '').trim();
                 
-                if (temaExtraido && temaExtraido.length >= 10 && !/^[A-F0-9-]+$/i.test(temaExtraido)) {
+                // CORREÇÃO: Remove tudo após o primeiro "-" (informações de série/trimestre)
+                if (temaExtraido.includes('-')) {
+                    const partes = temaExtraido.split('-');
+                    temaExtraido = partes[0].trim();
+                    console.log('✂️ Tema após remover informações extras:', temaExtraido);
+                }
+                
+                if (temaExtraido && temaExtraido.length >= 5 && !/^[A-F0-9-]+$/i.test(temaExtraido)) {
                     console.log('✅ Tema encontrado:', temaExtraido);
                     return temaExtraido;
                 }
@@ -100,8 +124,14 @@
             if (el.children.length === 0) {
                 const texto = el.textContent?.trim() || '';
                 if (texto.toUpperCase().startsWith('TEMA:')) {
-                    const temaExtraido = texto.replace(/TEMA:\s*/i, '').trim();
-                    if (temaExtraido && temaExtraido.length >= 10) {
+                    let temaExtraido = texto.replace(/TEMA:\s*/i, '').trim();
+                    
+                    // Remove tudo após o primeiro "-"
+                    if (temaExtraido.includes('-')) {
+                        temaExtraido = temaExtraido.split('-')[0].trim();
+                    }
+                    
+                    if (temaExtraido && temaExtraido.length >= 5) {
                         console.log('✅ Tema encontrado (fallback):', temaExtraido);
                         return temaExtraido;
                     }
@@ -119,7 +149,6 @@
     function extrairGeneroRedacao() {
         console.log('🔍 Procurando gênero da redação...');
         
-        // Procura elementos que contenham "Gênero:"
         const todosElementos = document.querySelectorAll('p.MuiTypography-body1, p.MuiTypography-root.MuiTypography-body1');
         
         for (const el of todosElementos) {
@@ -128,7 +157,6 @@
             if (textoCompleto.toUpperCase().includes('GÊNERO') || textoCompleto.toUpperCase().includes('GENERO')) {
                 console.log('📝 Elemento "Gênero:" encontrado:', textoCompleto);
                 
-                // Procura o próximo elemento que contém o gênero
                 const proximoIrmao = el.nextElementSibling;
                 if (proximoIrmao) {
                     const generoExtraido = proximoIrmao.textContent?.trim() || '';
@@ -138,7 +166,6 @@
             }
         }
         
-        // Fallback: procura em todos os elementos
         for (const el of todosElementos) {
             const texto = el.textContent?.trim() || '';
             if (texto === 'RESENHA' || texto === 'DISSERTAÇÃO' || texto === 'ARTIGO' || 
@@ -179,9 +206,11 @@
     }
 
     async function gerarRedacaoComMistral(tema, maxPalavras, genero) {
+        // Calcula uma faixa de palavras (entre 80% e 100% do máximo)
+        const minPalavras = Math.floor(maxPalavras * 0.8);
+        
         let prompt = '';
         
-        // Adapta o prompt baseado no gênero
         if (genero.toUpperCase() === 'RESENHA') {
             prompt = `Você é um especialista em redação. Escreva uma RESENHA CRÍTICA completa sobre o tema: "${tema}".
         
@@ -195,7 +224,7 @@ Instruções IMPORTANTES:
   3. Pontos positivos e negativos
   4. Conclusão com recomendação
 - Use linguagem formal e culta
-- A redação deve ter NO MÁXIMO ${maxPalavras} palavras
+- A redação deve ter ENTRE ${minPalavras} E ${maxPalavras} palavras (NEM MENOS, NEM MAIS)
 - NÃO repita o título no corpo da redação
 
 IMPORTANTE: Responda EXATAMENTE neste formato (sem asteriscos):
@@ -213,13 +242,12 @@ Instruções IMPORTANTES:
   3. Dados e exemplos
   4. Conclusão com reflexão
 - Use linguagem formal e culta
-- A redação deve ter NO MÁXIMO ${maxPalavras} palavras
+- A redação deve ter ENTRE ${minPalavras} E ${maxPalavras} palavras (NEM MENOS, NEM MAIS)
 
 IMPORTANTE: Responda EXATAMENTE neste formato (sem asteriscos):
 TÍTULO: [título do artigo - sem formatação]
 REDAÇÃO: [texto completo do artigo - sem formatação]`;
         } else {
-            // Padrão: Dissertação
             prompt = `Você é um professor de redação. Escreva uma DISSERTAÇÃO ARGUMENTATIVA completa sobre o tema: "${tema}".
         
 Instruções IMPORTANTES:
@@ -229,7 +257,7 @@ Instruções IMPORTANTES:
 - Desenvolva em 2-3 parágrafos com argumentos
 - Conclusão com proposta de intervenção
 - Use linguagem formal e culta
-- A redação deve ter NO MÁXIMO ${maxPalavras} palavras
+- A redação deve ter ENTRE ${minPalavras} E ${maxPalavras} palavras (NEM MENOS, NEM MAIS)
 
 IMPORTANTE: Responda EXATAMENTE neste formato (sem asteriscos):
 TÍTULO: [título - sem formatação]
@@ -286,7 +314,6 @@ REDAÇÃO: [texto completo - sem formatação]`;
 
         aiResponseText = limparFormatacao(aiResponseText);
 
-        // Extrai APENAS o título (primeira linha após TÍTULO:)
         const tituloMatch = aiResponseText.match(/TÍTULO:\s*(.+?)(?:\n|$)/i);
         const redacaoMatch = aiResponseText.match(/REDAÇÃO:\s*([\s\S]+)/i);
         
@@ -295,16 +322,13 @@ REDAÇÃO: [texto completo - sem formatação]`;
         
         if (tituloMatch) {
             titulo = limparFormatacao(tituloMatch[1].trim());
-            // Garante que o título é apenas UMA linha
             titulo = titulo.split('\n')[0].trim();
         }
         
         if (redacaoMatch) {
             redacao = limparFormatacao(redacaoMatch[1].trim());
-            // Remove qualquer "TÍTULO:" que possa ter sobrado
             redacao = redacao.replace(/TÍTULO:.*?\n/g, '');
         } else {
-            // Se não encontrou REDAÇÃO:, pega tudo depois do título
             const linhas = aiResponseText.split('\n');
             const indexRedacao = linhas.findIndex(l => l.toUpperCase().includes('REDAÇÃO'));
             if (indexRedacao >= 0) {
@@ -313,26 +337,92 @@ REDAÇÃO: [texto completo - sem formatação]`;
             }
         }
         
-        // Se não encontrou título, pega a primeira linha
         if (!titulo) {
             const linhas = aiResponseText.split('\n').filter(l => l.trim());
             titulo = linhas[0].replace(/TÍTULO:?\s*/i, '').trim();
             titulo = titulo.split('\n')[0].trim();
         }
         
-        // Limpeza final
         titulo = titulo.replace(/\*/g, '').trim();
         redacao = redacao.replace(/\*/g, '').trim();
         
-        // Garante que o título NÃO contém o texto da redação
         if (titulo.length > 200) {
             titulo = titulo.substring(0, 200) + '...';
         }
         
-        console.log('📌 Título:', titulo);
-        console.log('📄 Redação (primeiros 100 chars):', redacao.substring(0, 100));
+        // Conta palavras
+        const palavrasRedacao = redacao.split(/\s+/).length;
+        console.log('📊 Palavras na redação:', palavrasRedacao);
         
-        return { titulo, redacao };
+        return { titulo, redacao, palavras: palavrasRedacao };
+    }
+
+    // ============================================
+    // POPUP DE SELEÇÃO DE MÉTODO
+    // ============================================
+    function mostrarPopupSelecaoMetodo() {
+        return new Promise((resolve) => {
+            const overlay = document.createElement('div');
+            overlay.style.cssText = `
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                background: rgba(0,0,0,0.5);
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                z-index: 999999;
+            `;
+            
+            const popup = document.createElement('div');
+            popup.style.cssText = `
+                background: white;
+                padding: 30px;
+                border-radius: 15px;
+                box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+                text-align: center;
+                max-width: 400px;
+                font-family: Arial, sans-serif;
+            `;
+            
+            popup.innerHTML = `
+                <h2 style="margin: 0 0 20px 0; color: #333;">🔧 Método de Inserção</h2>
+                <p style="margin: 10px 0; color: #666;">Escolha como o texto será inserido:</p>
+                <select id="metodoSelect" style="
+                    width: 100%;
+                    padding: 10px;
+                    margin: 15px 0;
+                    border: 2px solid #4CAF50;
+                    border-radius: 8px;
+                    font-size: 16px;
+                    cursor: pointer;
+                ">
+                    <option value="digitacao">⌨️ Digitação (caractere por caractere)</option>
+                    <option value="colagem">📋 Colagem (Colar texto de uma vez)</option>
+                </select>
+                <button id="confirmarMetodo" style="
+                    background: #4CAF50;
+                    color: white;
+                    border: none;
+                    padding: 12px 30px;
+                    border-radius: 8px;
+                    font-size: 16px;
+                    cursor: pointer;
+                    margin-top: 10px;
+                ">Confirmar</button>
+            `;
+            
+            overlay.appendChild(popup);
+            document.body.appendChild(overlay);
+            
+            document.getElementById('confirmarMetodo').onclick = () => {
+                const metodo = document.getElementById('metodoSelect').value;
+                document.body.removeChild(overlay);
+                resolve(metodo);
+            };
+        });
     }
 
     function instalarListenerClique() {
@@ -358,18 +448,65 @@ REDAÇÃO: [texto completo - sem formatação]`;
                 return;
             }
 
-            // Verifica qual texto inserir baseado no modo
             const texto = STATE.modo === 'titulo' ? STATE.tituloRedacao : STATE.textoRedacao;
             if (!texto) {
                 alert('❌ Texto não encontrado!');
                 return;
             }
 
-            inserirTextoNoCampo(el, texto);
+            if (STATE.metodoInsercao === 'colagem') {
+                colarTextoNoCampo(el, texto);
+            } else {
+                inserirTextoNoCampo(el, texto);
+            }
         };
 
         document.addEventListener('click', STATE.onDocClick, true);
         STATE.listenerInstalado = true;
+    }
+
+    // ============================================
+    // MÉTODO DE COLAGEM
+    // ============================================
+    function colarTextoNoCampo(el, texto) {
+        // Força habilitação de paste antes de colar
+        forcarHabilitacaoPaste();
+        
+        const isInputEl = (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA');
+        const isContentEditable = !!el.isContentEditable;
+        
+        try {
+            el.focus();
+            
+            if (isInputEl) {
+                // Para inputs, seleciona todo o texto e substitui
+                el.select();
+                el.value = texto;
+                el.dispatchEvent(new Event('input', { bubbles: true }));
+                el.dispatchEvent(new Event('change', { bubbles: true }));
+            } else if (isContentEditable) {
+                // Para contenteditable, limpa e insere
+                el.innerHTML = '';
+                const textNode = document.createTextNode(texto);
+                el.appendChild(textNode);
+                el.dispatchEvent(new Event('input', { bubbles: true }));
+            } else {
+                // Fallback
+                el.innerText = texto;
+                el.dispatchEvent(new Event('input', { bubbles: true }));
+            }
+            
+            console.log('✅ Texto colado com sucesso!');
+            
+            // Continua o fluxo
+            setTimeout(() => continuarFluxo(), 500);
+            
+        } catch (error) {
+            console.error('❌ Erro ao colar:', error);
+            alert('❌ Erro ao colar texto. Tentando método alternativo...');
+            // Fallback para digitação
+            inserirTextoNoCampo(el, texto);
+        }
     }
 
     function inserirCharInput(el, ch) {
@@ -513,7 +650,17 @@ REDAÇÃO: [texto completo - sem formatação]`;
     }
 
     async function iniciar() {
-        const palavrasInput = prompt('📝 Quantas palavras MÁXIMAS para a redação? (Padrão: 300)', '300');
+        // Mostra popup para escolher método
+        const metodo = await mostrarPopupSelecaoMetodo();
+        STATE.metodoInsercao = metodo;
+        console.log('🔧 Método selecionado:', metodo);
+        
+        // Se for colagem, força habilitação de paste
+        if (metodo === 'colagem') {
+            forcarHabilitacaoPaste();
+        }
+
+        const palavrasInput = prompt('📝 Quantas palavras para a redação? (Padrão: 300)', '300');
         const maxPalavras = parseInt(palavrasInput) || CONFIG.MAX_PALAVRAS_PADRAO;
         
         if (maxPalavras < 50) {
@@ -526,10 +673,8 @@ REDAÇÃO: [texto completo - sem formatação]`;
 
         STATE.currentSpeed = CONFIG.VELOCIDADE_PADRAO;
 
-        // Extrai o gênero
         const genero = extrairGeneroRedacao();
         STATE.generoRedacao = genero;
-        console.log('📝 Gênero:', genero);
 
         const tema = extrairTemaRedacao();
         if (!tema) {
@@ -537,7 +682,7 @@ REDAÇÃO: [texto completo - sem formatação]`;
             return;
         }
         
-        alert('✅ Tema: "' + tema + '"\n📝 Gênero: ' + genero + '\n🤖 Gerando redação... Aguarde.');
+        alert('✅ Tema: "' + tema + '"\n📝 Gênero: ' + genero + '\n📊 Palavras: ' + STATE.maxPalavras + '\n🔧 Método: ' + (metodo === 'digitacao' ? 'Digitação' : 'Colagem') + '\n🤖 Gerando redação... Aguarde.');
 
         const redacao = await gerarRedacaoComMistral(tema, STATE.maxPalavras, genero);
         if (!redacao) return;
@@ -545,10 +690,7 @@ REDAÇÃO: [texto completo - sem formatação]`;
         STATE.tituloRedacao = redacao.titulo;
         STATE.textoRedacao = redacao.redacao;
 
-        console.log('📌 Título separado:', STATE.tituloRedacao);
-        console.log('📄 Redação separada (tamanho):', STATE.textoRedacao.length, 'caracteres');
-
-        alert('✅ Redação criada!\n🎯 Clique no campo de TÍTULO para inserir.');
+        alert('✅ Redação criada! (' + redacao.palavras + ' palavras)\n🎯 Clique no campo de TÍTULO para inserir.');
 
         STATE.modo = 'titulo';
         STATE.aguardandoCampo = true;
