@@ -1,181 +1,95 @@
-// KALIU DIGITADOR - VERSÃO FINAL COMPLETA
+// KALIU DIGITADOR - VERSÃO COMPACTA
 (function() {
     'use strict';
 
-    const MISTRAL_API_KEYS = [
-        "HJn0dgzp04QzEZkLnMc45lYYQWiIR6QM",
-        "", 
-        ""
-    ];
-    
-    let currentApiKeyIndex = 0;
+    const API_KEYS = ["HJn0dgzp04QzEZkLnMc45lYYQWiIR6QM", "", ""];
+    let keyIndex = 0;
+    let timeout = null;
+    let clickHandler = null;
+    let esperando = false;
+    let modo = 'titulo';
+    let titulo = '';
+    let texto = '';
+    let maxPalavras = 300;
 
-    const CONFIG = {
-        NAMESPACE: '__kaliudigitador__',
-        MODELO_MISTRAL: 'mistral-large-latest',
-        API_ENDPOINT: 'https://api.mistral.ai/v1/chat/completions',
-        VELOCIDADE: '1',
-        MAX_PALAVRAS_PADRAO: 300,
-        NOME_USUARIO: 'KALIU'
-    };
-
-    // Limpa instância anterior
-    (function() {
-        const state = window[CONFIG.NAMESPACE];
-        if (state) {
-            try {
-                if (state.typingTimeoutId) clearTimeout(state.typingTimeoutId);
-                if (state.onDocClick) document.removeEventListener('click', state.onDocClick, true);
-            } catch(e) {}
+    // Muda nome para KALIU
+    function mudarNome() {
+        const el = document.querySelector('p.css-1l1p01z, p.MuiTypography-body2.css-1l1p01z');
+        if (el && el.textContent.trim().length > 2 && el.textContent.trim().length < 60) {
+            el.textContent = 'KALIU';
+            return true;
         }
-    })();
-
-    const STATE = {
-        typingTimeoutId: null,
-        onDocClick: null,
-        listenerInstalado: false,
-        aguardandoCampo: false,
-        modo: 'titulo',
-        tituloRedacao: '',
-        textoRedacao: '',
-        maxPalavras: CONFIG.MAX_PALAVRAS_PADRAO,
-        generoRedacao: ''
-    };
-
-    window[CONFIG.NAMESPACE] = STATE;
-
-    // ============================================
-    // ALTERAR NOME PARA KALIU
-    // ============================================
-    function alterarNomeKaliu() {
-        // Procura elemento do nome (css-1l1p01z)
-        const elementosNome = document.querySelectorAll('p.css-1l1p01z, p.MuiTypography-body2.css-1l1p01z');
-        
-        for (const el of elementosNome) {
-            const texto = el.textContent?.trim() || '';
-            if (texto.length > 2 && texto.length < 60 && !texto.includes('TEMA') && !texto.includes('GÊNERO')) {
-                console.log('👤 Nome alterado:', texto, '→', CONFIG.NOME_USUARIO);
-                el.textContent = CONFIG.NOME_USUARIO;
-                el.style.color = '#e94560';
-                el.style.fontWeight = 'bold';
-                return;
-            }
-        }
-        
-        // Fallback: procura qualquer elemento com texto curto que pareça nome
-        const todosP = document.querySelectorAll('p');
-        for (const p of todosP) {
-            const texto = p.textContent?.trim() || '';
-            const irmaoAnterior = p.previousElementSibling;
-            
-            // Se tem um elemento antes com "Aluno:" ou similar
-            if (irmaoAnterior && /aluno|usuário|user|nome/i.test(irmaoAnterior.textContent || '')) {
-                console.log('👤 Nome alterado (fallback):', texto, '→', CONFIG.NOME_USUARIO);
-                p.textContent = CONFIG.NOME_USUARIO;
-                p.style.color = '#e94560';
-                p.style.fontWeight = 'bold';
-                return;
-            }
-        }
+        return false;
     }
 
-    // ============================================
-    // ENCONTRAR CAMPOS
-    // ============================================
-    function encontrarCampoTitulo() {
+    // Encontra campos
+    function campoInput() {
         const inputs = document.querySelectorAll('input[type="text"]');
-        for (const input of inputs) {
-            if (!input.value && !input.placeholder && input.offsetParent !== null) {
-                return input;
-            }
+        for (const i of inputs) {
+            if (!i.value && !i.placeholder && i.offsetParent) return i;
         }
-        return document.querySelector('input.MuiOutlinedInput-input') || 
-               document.querySelector('input.MuiInputBase-input');
+        return document.querySelector('input.MuiInputBase-input') || document.querySelector('input');
     }
 
-    function encontrarCampoRedacao() {
-        const textareas = document.querySelectorAll('textarea');
-        for (const ta of textareas) {
-            const ph = (ta.placeholder || '').toLowerCase();
-            if (ph.includes('comece') || ph.includes('redação') || ph.includes('escreva')) {
-                return ta;
-            }
+    function campoTextarea() {
+        const tas = document.querySelectorAll('textarea');
+        for (const t of tas) {
+            if (/comece|redação|escreva/i.test(t.placeholder || '')) return t;
         }
-        return document.querySelector('textarea.MuiInputBase-inputMultiline') ||
-               document.querySelector('textarea');
+        return document.querySelector('textarea');
     }
 
-    // ============================================
-    // EXTRAIR DADOS DA PÁGINA
-    // ============================================
-    function extrairTema() {
-        const elementos = document.querySelectorAll('p.MuiTypography-body2');
-        for (const el of elementos) {
-            const texto = el.textContent?.trim() || '';
-            if (texto.toUpperCase().startsWith('TEMA:')) {
-                let tema = texto.replace(/TEMA:\s*/i, '').trim();
-                
-                // Pega do próximo elemento se vazio
+    // Extrai tema
+    function pegarTema() {
+        const els = document.querySelectorAll('p.MuiTypography-body2');
+        for (const el of els) {
+            const t = el.textContent.trim();
+            if (/^TEMA:/i.test(t)) {
+                let tema = t.replace(/TEMA:\s*/i, '').trim();
                 if (!tema || tema.length < 3) {
                     const irmao = el.nextElementSibling;
-                    if (irmao) tema = irmao.textContent?.trim() || '';
+                    if (irmao) tema = irmao.textContent.trim();
                 }
-                
-                // Remove informações extras após "-"
                 if (tema.includes('-')) tema = tema.split('-')[0].trim();
-                
                 if (tema.length >= 5) return tema;
             }
         }
         return null;
     }
 
-    function extrairGenero() {
-        const elementos = document.querySelectorAll('p.MuiTypography-body1');
-        for (const el of elementos) {
-            const texto = el.textContent?.trim() || '';
-            if (texto.toUpperCase().includes('GÊNERO') || texto.toUpperCase().includes('GENERO')) {
+    // Extrai gênero
+    function pegarGenero() {
+        const els = document.querySelectorAll('p.MuiTypography-body1');
+        for (const el of els) {
+            if (/GÊNERO|GENERO/i.test(el.textContent)) {
                 const irmao = el.nextElementSibling;
-                return irmao ? irmao.textContent?.trim() || 'DISSERTAÇÃO' : 'DISSERTAÇÃO';
+                return irmao ? irmao.textContent.trim() : 'DISSERTAÇÃO';
             }
         }
         return 'DISSERTAÇÃO';
     }
 
-    // ============================================
-    // GERAR REDAÇÃO
-    // ============================================
-    async function gerarRedacao(tema, maxPalavras, genero) {
-        const minPalavras = Math.floor(maxPalavras * 0.85);
-        
-        const prompt = `Escreva uma redação de gênero "${genero}" sobre: "${tema}"
+    // Gera redação
+    async function gerar(tema, palavras, genero) {
+        const min = Math.floor(palavras * 0.85);
+        const prompt = `Escreva ${genero} sobre: "${tema}". ${min}-${palavras} palavras. Sem markdown.\nTITULO: [título]\nTEXTO: [redação]`;
 
-REGRAS:
-- Entre ${minPalavras} e ${maxPalavras} palavras
-- NÃO use asteriscos, hashtags ou markdown
-- Português formal
-
-Responda EXATAMENTE assim:
-TITULO: [título]
-TEXTO: [redação completa]`;
-
-        for (let i = 0; i < MISTRAL_API_KEYS.length; i++) {
-            const key = MISTRAL_API_KEYS[currentApiKeyIndex];
-            
+        for (let i = 0; i < API_KEYS.length; i++) {
+            const key = API_KEYS[keyIndex];
             if (!key || key.trim() === '') {
-                currentApiKeyIndex = (currentApiKeyIndex + 1) % MISTRAL_API_KEYS.length;
+                keyIndex = (keyIndex + 1) % API_KEYS.length;
                 continue;
             }
 
             try {
-                const resp = await fetch(CONFIG.API_ENDPOINT, {
+                const resp = await fetch('https://api.mistral.ai/v1/chat/completions', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                         'Authorization': `Bearer ${key}`
                     },
                     body: JSON.stringify({
-                        model: CONFIG.MODELO_MISTRAL,
+                        model: 'mistral-large-latest',
                         messages: [{ role: 'user', content: prompt }],
                         temperature: 0.8,
                         max_tokens: 4000
@@ -185,265 +99,148 @@ TEXTO: [redação completa]`;
                 if (resp.ok) {
                     const data = await resp.json();
                     const conteudo = data.choices?.[0]?.message?.content;
+                    if (!conteudo) continue;
                     
-                    if (conteudo) {
-                        // Limpa formatação
-                        const limpo = conteudo.replace(/\*\*/g, '').replace(/##/g, '').replace(/__/g, '');
-                        
-                        // Extrai título e texto
-                        let titulo = '';
-                        let texto = '';
-                        
-                        const t1 = limpo.match(/TITULO:\s*(.+)/i);
-                        const t2 = limpo.match(/TEXTO:\s*([\s\S]+)/i);
-                        
-                        if (t1) titulo = t1[1].trim();
-                        if (t2) texto = t2[1].trim();
-                        
-                        // Fallback
-                        if (!titulo || !texto) {
-                            const linhas = limpo.split('\n').filter(l => l.trim());
-                            if (!titulo && linhas.length > 0) titulo = linhas[0].trim();
-                            if (!texto && linhas.length > 1) texto = linhas.slice(1).join('\n').trim();
-                            if (!texto) texto = limpo;
-                        }
-                        
-                        titulo = titulo.replace(/\*/g, '').trim();
-                        texto = texto.replace(/\*/g, '').trim();
-                        
-                        if (titulo.length > 150) titulo = titulo.substring(0, 150);
-                        
-                        const palavras = texto.split(/\s+/).filter(p => p.length > 0).length;
-                        
-                        return { titulo, texto, palavras };
+                    const limpo = conteudo.replace(/\*\*|##|__/g, '');
+                    
+                    let tit = '', tex = '';
+                    const m1 = limpo.match(/TITULO:\s*(.+)/i);
+                    const m2 = limpo.match(/TEXTO:\s*([\s\S]+)/i);
+                    
+                    if (m1) tit = m1[1].trim();
+                    if (m2) tex = m2[1].trim();
+                    
+                    if (!tit || !tex) {
+                        const linhas = limpo.split('\n').filter(l => l.trim());
+                        if (!tit && linhas.length > 0) tit = linhas[0].trim();
+                        if (!tex) tex = linhas.slice(1).join('\n').trim();
+                        if (!tex) tex = limpo;
                     }
+                    
+                    tit = tit.replace(/\*/g, '').trim();
+                    tex = tex.replace(/\*/g, '').trim().replace(/\n{3,}/g, '\n\n');
+                    if (tit.length > 150) tit = tit.substring(0, 150);
+                    
+                    const p = tex.split(/\s+/).filter(w => w.length > 0).length;
+                    return { titulo: tit, texto: tex, palavras: p };
                 }
-            } catch(e) {
-                console.warn('Erro chave:', e.message);
-            }
+            } catch(e) {}
             
-            currentApiKeyIndex = (currentApiKeyIndex + 1) % MISTRAL_API_KEYS.length;
+            keyIndex = (keyIndex + 1) % API_KEYS.length;
         }
-        
         return null;
     }
 
-    // ============================================
-    // DIGITAR TEXTO
-    // ============================================
-    function digitar(el, texto) {
-        if (STATE.typingTimeoutId) clearTimeout(STATE.typingTimeoutId);
-        
-        STATE.currentElement = el;
-        STATE.currentText = texto;
+    // Digita em lotes de palavras
+    function digitarLotes(el, txt) {
+        if (timeout) clearTimeout(timeout);
         
         try {
             el.readOnly = false;
             el.focus();
         } catch(e) {}
         
+        const palavras = txt.split(/(\s+)/);
         let i = 0;
         
-        function digitarChar() {
-            if (i < texto.length) {
+        function lote() {
+            if (i < palavras.length) {
+                const pedaco = palavras.slice(i, i + 3).join('');
+                i += 3;
+                
                 try {
                     if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') {
                         const pos = el.selectionStart || el.value.length;
-                        el.setRangeText(texto[i], pos, pos, 'end');
+                        el.setRangeText(pedaco, pos, pos, 'end');
                     } else if (el.isContentEditable) {
-                        document.execCommand('insertText', false, texto[i]);
+                        document.execCommand('insertText', false, pedaco);
                     }
                     el.dispatchEvent(new Event('input', { bubbles: true }));
                 } catch(e) {}
                 
-                i++;
-                STATE.typingTimeoutId = setTimeout(digitarChar, 1);
+                timeout = setTimeout(lote, 10);
             } else {
-                STATE.typingTimeoutId = null;
+                timeout = null;
                 el.dispatchEvent(new Event('input', { bubbles: true }));
                 el.dispatchEvent(new Event('change', { bubbles: true }));
                 continuar();
             }
         }
         
-        STATE.typingTimeoutId = setTimeout(digitarChar, 1);
+        timeout = setTimeout(lote, 10);
     }
 
-    // ============================================
-    // CONTINUAR FLUXO
-    // ============================================
     function continuar() {
-        if (STATE.modo === 'titulo') {
-            STATE.modo = 'redacao';
-            const campoRedacao = encontrarCampoRedacao();
-            
-            if (campoRedacao) {
-                setTimeout(() => digitar(campoRedacao, STATE.textoRedacao), 300);
+        if (modo === 'titulo') {
+            modo = 'redacao';
+            const ta = campoTextarea();
+            if (ta) {
+                setTimeout(() => digitarLotes(ta, texto), 300);
             } else {
-                STATE.aguardandoCampo = true;
-                alert('✅ TÍTULO INSERIDO!\n📄 Clique no campo de REDAÇÃO.');
+                esperando = true;
+                alert('✅ Título inserido!\n📄 Clique no campo de REDAÇÃO.');
             }
         } else {
             setTimeout(() => {
-                const botoes = document.querySelectorAll('button');
-                for (const btn of botoes) {
-                    if (/salvar|save|enviar|publicar/i.test(btn.textContent || '')) {
-                        btn.click();
+                const btns = document.querySelectorAll('button');
+                for (const b of btns) {
+                    if (/salvar|save|enviar|publicar/i.test(b.textContent || '')) {
+                        b.click();
                         return;
                     }
                 }
-                alert('✅ CONCLUÍDO!');
+                alert('✅ Concluído!');
             }, 500);
         }
     }
 
-    // ============================================
-    // INTERFACE
-    // ============================================
-    function mostrarInterface(tema, genero, callback) {
-        const overlay = document.createElement('div');
-        overlay.id = 'kaliu-overlay';
-        overlay.style.cssText = `
-            position:fixed;top:0;left:0;width:100%;height:100%;
-            background:rgba(0,0,0,0.8);display:flex;align-items:center;
-            justify-content:center;z-index:999999;font-family:Arial,sans-serif;
-        `;
-        
-        overlay.innerHTML = `
-            <div style="
-                background:linear-gradient(135deg,#1a1a2e,#16213e,#0f3460);
-                padding:30px;border-radius:20px;text-align:center;
-                max-width:420px;width:90%;border:2px solid #e94560;
-                box-shadow:0 20px 60px rgba(0,0,0,0.5);
-            ">
-                <div style="font-size:50px;margin-bottom:10px;">⚡</div>
-                <h2 style="color:#e94560;margin:0 0 5px;font-size:26px;">KALIU DIGITADOR</h2>
-                <p style="color:#888;margin:0 0 20px;font-size:13px;">Premium Auto Redação</p>
-                
-                <div style="background:rgba(255,255,255,0.05);border-radius:10px;
-                    padding:12px;margin:10px 0;text-align:left;">
-                    <span style="color:#e94560;font-size:11px;font-weight:bold;">📝 TEMA</span>
-                    <p style="color:#fff;margin:5px 0 0;font-size:14px;">${tema}</p>
-                </div>
-                
-                <div style="background:rgba(255,255,255,0.05);border-radius:10px;
-                    padding:12px;margin:10px 0;text-align:left;">
-                    <span style="color:#e94560;font-size:11px;font-weight:bold;">📄 GÊNERO</span>
-                    <p style="color:#fff;margin:5px 0 0;font-size:14px;">${genero}</p>
-                </div>
-                
-                <div style="margin:20px 0;">
-                    <p style="color:#aaa;font-size:13px;margin:0 0 8px;">📊 Palavras: 
-                        <span id="kaliu-valor" style="color:#e94560;font-size:22px;font-weight:bold;">300</span>
-                    </p>
-                    <input type="range" id="kaliu-slider" min="50" max="500" value="300" 
-                        style="width:100%;accent-color:#e94560;">
-                </div>
-                
-                <button id="kaliu-gerar" style="
-                    background:linear-gradient(135deg,#e94560,#c23152);
-                    color:#fff;border:none;padding:14px 35px;border-radius:25px;
-                    font-size:16px;font-weight:bold;cursor:pointer;margin-top:10px;
-                    transition:transform 0.2s;box-shadow:0 5px 20px rgba(233,69,96,0.3);
-                ">🚀 GERAR REDAÇÃO</button>
-                
-                <p style="color:#444;font-size:10px;margin-top:12px;">by KALIU</p>
-            </div>
-        `;
-        
-        document.body.appendChild(overlay);
-        
-        document.getElementById('kaliu-slider').oninput = function() {
-            document.getElementById('kaliu-valor').textContent = this.value;
-        };
-        
-        document.getElementById('kaliu-gerar').onclick = function() {
-            const palavras = parseInt(document.getElementById('kaliu-slider').value);
-            document.body.removeChild(overlay);
-            callback(palavras);
-        };
-    }
-
-    function mostrarLoading() {
-        const el = document.createElement('div');
-        el.id = 'kaliu-loading';
-        el.style.cssText = `
-            position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);
-            background:rgba(0,0,0,0.9);color:#e94560;padding:20px 40px;
-            border-radius:15px;z-index:999999;font-family:Arial,sans-serif;
-            font-size:18px;font-weight:bold;
-        `;
-        el.textContent = '🤖 KALIU GERANDO REDAÇÃO...';
-        document.body.appendChild(el);
-        return el;
-    }
-
-    // ============================================
-    // INICIAR
-    // ============================================
     async function iniciar() {
-        // ALTERA NOME PARA KALIU
-        alterarNomeKaliu();
+        mudarNome();
         
-        const tema = extrairTema();
-        if (!tema) {
-            alert('❌ TEMA NÃO ENCONTRADO!');
-            return;
+        const tema = pegarTema();
+        if (!tema) return alert('❌ Tema não encontrado!');
+        
+        const genero = pegarGenero();
+        const p = prompt('📝 Quantas palavras? (50-500)', '300');
+        maxPalavras = parseInt(p) || 300;
+        if (maxPalavras < 50) maxPalavras = 300;
+        if (maxPalavras > 500) maxPalavras = 500;
+        
+        alert('🤖 KALIU gerando redação... Aguarde.');
+        
+        const res = await gerar(tema, maxPalavras, genero);
+        if (!res) return alert('❌ Erro ao gerar!');
+        
+        titulo = res.titulo;
+        texto = res.texto;
+        
+        console.log('📌', titulo);
+        console.log('📄', res.palavras + ' palavras');
+        
+        const inp = campoInput();
+        if (inp) {
+            modo = 'titulo';
+            digitarLotes(inp, titulo);
+        } else {
+            alert('✅ Pronto! Clique no campo de TÍTULO.');
+            modo = 'titulo';
+            esperando = true;
+            
+            if (!clickHandler) {
+                clickHandler = function(e) {
+                    if (!esperando) return;
+                    e.preventDefault();
+                    e.stopPropagation();
+                    esperando = false;
+                    digitarLotes(e.target, modo === 'titulo' ? titulo : texto);
+                };
+                document.addEventListener('click', clickHandler, true);
+            }
         }
-        
-        const genero = extrairGenero();
-        STATE.generoRedacao = genero;
-        
-        mostrarInterface(tema, genero, async (palavras) => {
-            STATE.maxPalavras = palavras;
-            
-            const loading = mostrarLoading();
-            
-            const resultado = await gerarRedacao(tema, palavras, genero);
-            
-            if (loading.parentNode) loading.parentNode.removeChild(loading);
-            
-            if (!resultado) {
-                alert('❌ ERRO AO GERAR REDAÇÃO!');
-                return;
-            }
-            
-            STATE.tituloRedacao = resultado.titulo;
-            STATE.textoRedacao = resultado.texto;
-            
-            console.log('📌 TÍTULO:', resultado.titulo);
-            console.log('📄 TEXTO:', resultado.texto.substring(0, 100) + '...');
-            console.log('📊 PALAVRAS:', resultado.palavras);
-            
-            const campoTitulo = encontrarCampoTitulo();
-            
-            if (campoTitulo) {
-                STATE.modo = 'titulo';
-                digitar(campoTitulo, STATE.tituloRedacao);
-            } else {
-                alert('✅ REDAÇÃO GERADA! (' + resultado.palavras + ' palavras)\n🎯 Clique no campo de TÍTULO.');
-                STATE.modo = 'titulo';
-                STATE.aguardandoCampo = true;
-                
-                if (!STATE.listenerInstalado) {
-                    STATE.onDocClick = function(e) {
-                        if (!STATE.aguardandoCampo) return;
-                        e.preventDefault();
-                        e.stopPropagation();
-                        STATE.aguardandoCampo = false;
-                        
-                        const texto = STATE.modo === 'titulo' ? STATE.tituloRedacao : STATE.textoRedacao;
-                        digitar(e.target, texto);
-                    };
-                    document.addEventListener('click', STATE.onDocClick, true);
-                    STATE.listenerInstalado = true;
-                }
-            }
-        });
     }
 
-    window.iniciarKaliu = iniciar;
-    console.log('⚡ KALIU DIGITADOR CARREGADO!');
+    window.kaliu = iniciar;
+    console.log('⚡ KALIU carregado!');
     iniciar();
 
 })();
