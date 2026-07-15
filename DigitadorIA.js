@@ -1,4 +1,4 @@
-// AUTO DIGITADOR COM MISTRAL - COM AUTO-DETECÇÃO DE CAMPOS
+// AUTO DIGITADOR COM MISTRAL - CORRIGIDO
 (function() {
     'use strict';
 
@@ -57,191 +57,125 @@
     // AUTO-DETECÇÃO DE CAMPOS
     // ============================================
     function detectarCampoTitulo() {
-        console.log('🔍 Auto-detectando campo de título...');
+        console.log('🔍 Procurando campo de título...');
         
-        // Procura por INPUT com as classes específicas
         const inputs = document.querySelectorAll('input.MuiOutlinedInput-input, input.MuiInputBase-input');
         
         for (const input of inputs) {
-            const classes = input.className || '';
-            
-            // Verifica se é um input de texto (não password, email, etc)
-            if (input.type === 'text' && !input.placeholder) {
-                // Verifica se NÃO é uma textarea (campo de redação)
-                if (input.tagName === 'INPUT' && !classes.includes('Multiline')) {
-                    console.log('✅ Campo de título encontrado:', input);
-                    return input;
-                }
-            }
-        }
-        
-        // Fallback: primeiro input de texto vazio
-        const todosInputs = document.querySelectorAll('input[type="text"]');
-        for (const input of todosInputs) {
-            if (!input.value && !input.placeholder) {
-                console.log('✅ Campo de título (fallback):', input);
+            if (input.type === 'text' && !input.placeholder && input.tagName === 'INPUT') {
+                console.log('✅ Campo de título encontrado');
                 return input;
             }
         }
         
-        console.warn('⚠️ Campo de título não encontrado automaticamente');
+        const todosInputs = document.querySelectorAll('input[type="text"]');
+        for (const input of todosInputs) {
+            if (!input.value && !input.placeholder) {
+                console.log('✅ Campo de título (fallback)');
+                return input;
+            }
+        }
+        
         return null;
     }
 
     function detectarCampoRedacao() {
-        console.log('🔍 Auto-detectando campo de redação...');
+        console.log('🔍 Procurando campo de redação...');
         
-        // Procura por TEXTAREA com as classes específicas
-        const textareas = document.querySelectorAll('textarea.MuiOutlinedInput-input, textarea.MuiInputBase-input');
+        const textareas = document.querySelectorAll('textarea');
         
         for (const textarea of textareas) {
-            const placeholder = textarea.placeholder || '';
-            
-            // Verifica pelo placeholder característico
-            if (placeholder.includes('Comece a escrever') || 
+            const placeholder = (textarea.placeholder || '').toLowerCase();
+            if (placeholder.includes('comece a escrever') || 
                 placeholder.includes('redação') ||
-                placeholder.includes('escreva')) {
-                console.log('✅ Campo de redação encontrado pelo placeholder:', textarea);
+                placeholder.includes('escreva') ||
+                placeholder.includes('texto')) {
+                console.log('✅ Campo de redação encontrado');
                 return textarea;
             }
         }
         
-        // Fallback: procura por textarea com classe Multiline
         const textareasMultiline = document.querySelectorAll('textarea.MuiInputBase-inputMultiline');
-        for (const textarea of textareasMultiline) {
-            console.log('✅ Campo de redação encontrado (Multiline):', textarea);
-            return textarea;
+        if (textareasMultiline.length > 0) {
+            console.log('✅ Campo de redação (Multiline)');
+            return textareasMultiline[0];
         }
         
-        // Segundo fallback: qualquer textarea visível
-        const todasTextareas = document.querySelectorAll('textarea');
-        for (const textarea of todasTextareas) {
-            if (textarea.offsetParent !== null) { // Verifica se está visível
-                console.log('✅ Campo de redação (fallback):', textarea);
+        for (const textarea of textareas) {
+            if (textarea.offsetParent !== null) {
+                console.log('✅ Campo de redação (visível)');
                 return textarea;
             }
         }
         
-        console.warn('⚠️ Campo de redação não encontrado automaticamente');
         return null;
     }
 
-    function autoInserirTexto(campo, texto) {
-        if (!campo) return false;
-        
-        console.log('🎯 Inserindo texto automaticamente no campo:', campo);
-        
-        // Foca no campo
-        campo.focus();
-        
-        // Se for input, remove readonly
-        if (campo.tagName === 'INPUT' || campo.tagName === 'TEXTAREA') {
-            campo.readOnly = false;
-        }
-        
-        // Insere o texto
-        digitarRapidamente(campo, texto);
-        
-        return true;
-    }
-
     // ============================================
-    // EXTRAIR TEMA CORRETO
+    // EXTRAIR TEMA
     // ============================================
     function extrairTemaRedacao() {
-        console.log('🔍 Procurando tema da redação...');
+        console.log('🔍 Procurando tema...');
         
-        const elementosAlvo = document.querySelectorAll('p.MuiTypography-body2, p.MuiTypography-root.MuiTypography-body2');
+        const elementos = document.querySelectorAll('p.MuiTypography-body2, p.MuiTypography-root.MuiTypography-body2');
         
-        for (const el of elementosAlvo) {
-            const textoCompleto = el.textContent?.trim() || '';
+        for (const el of elementos) {
+            const texto = el.textContent?.trim() || '';
             
-            if (textoCompleto.toUpperCase().includes('TEMA:')) {
-                let temaExtraido = textoCompleto.replace(/TEMA:\s*/i, '').trim();
+            if (texto.toUpperCase().includes('TEMA:')) {
+                let tema = texto.replace(/TEMA:\s*/i, '').trim();
                 
-                if (!temaExtraido || temaExtraido.length < 5) {
-                    const proximoIrmao = el.nextElementSibling;
-                    if (proximoIrmao) {
-                        temaExtraido = proximoIrmao.textContent?.trim() || '';
+                if (!tema || tema.length < 5) {
+                    const irmao = el.nextElementSibling;
+                    if (irmao) tema = irmao.textContent?.trim() || '';
+                }
+                
+                if (!tema || tema.length < 5) {
+                    const pai = el.parentElement;
+                    if (pai) {
+                        const textoPai = pai.textContent?.trim() || '';
+                        tema = textoPai.replace(/TEMA:\s*/i, '').trim();
                     }
                 }
                 
-                if (!temaExtraido || temaExtraido.length < 5) {
-                    const elementoPai = el.parentElement;
-                    if (elementoPai) {
-                        const textoPai = elementoPai.textContent?.trim() || '';
-                        temaExtraido = textoPai.replace(/TEMA:\s*/i, '').trim();
-                    }
+                tema = tema.replace(/^[:\s]+/, '').replace(/[\s]+$/, '').trim();
+                
+                if (tema.includes('-')) {
+                    tema = tema.split('-')[0].trim();
                 }
                 
-                temaExtraido = temaExtraido.replace(/^[:\s]+/, '').replace(/[\s]+$/, '').trim();
-                
-                // Remove tudo após o primeiro "-"
-                if (temaExtraido.includes('-')) {
-                    temaExtraido = temaExtraido.split('-')[0].trim();
-                }
-                
-                if (temaExtraido && temaExtraido.length >= 5 && !/^[A-F0-9-]+$/i.test(temaExtraido)) {
-                    console.log('✅ Tema encontrado:', temaExtraido);
-                    return temaExtraido;
+                if (tema && tema.length >= 5) {
+                    console.log('✅ Tema:', tema);
+                    return tema;
                 }
             }
         }
         
-        const todosElementos = document.querySelectorAll('*');
-        for (const el of todosElementos) {
-            if (el.children.length === 0) {
-                const texto = el.textContent?.trim() || '';
-                if (texto.toUpperCase().startsWith('TEMA:')) {
-                    let temaExtraido = texto.replace(/TEMA:\s*/i, '').trim();
-                    if (temaExtraido.includes('-')) {
-                        temaExtraido = temaExtraido.split('-')[0].trim();
-                    }
-                    if (temaExtraido && temaExtraido.length >= 5) {
-                        console.log('✅ Tema encontrado:', temaExtraido);
-                        return temaExtraido;
-                    }
-                }
-            }
-        }
-        
-        console.error('❌ Tema não encontrado!');
         return null;
     }
 
     // ============================================
-    // EXTRAIR GÊNERO DA REDAÇÃO
+    // EXTRAIR GÊNERO
     // ============================================
     function extrairGeneroRedacao() {
-        console.log('🔍 Procurando gênero...');
+        const elementos = document.querySelectorAll('p.MuiTypography-body1, p.MuiTypography-root.MuiTypography-body1');
         
-        const todosElementos = document.querySelectorAll('p.MuiTypography-body1, p.MuiTypography-root.MuiTypography-body1');
-        
-        for (const el of todosElementos) {
-            const textoCompleto = el.textContent?.trim() || '';
-            
-            if (textoCompleto.toUpperCase().includes('GÊNERO') || textoCompleto.toUpperCase().includes('GENERO')) {
-                const proximoIrmao = el.nextElementSibling;
-                if (proximoIrmao) {
-                    const generoExtraido = proximoIrmao.textContent?.trim() || '';
-                    console.log('✅ Gênero:', generoExtraido);
-                    return generoExtraido;
-                }
-            }
-        }
-        
-        for (const el of todosElementos) {
+        for (const el of elementos) {
             const texto = el.textContent?.trim() || '';
-            if (texto === 'RESENHA' || texto === 'DISSERTAÇÃO' || texto === 'ARTIGO' || 
-                texto === 'CRÔNICA' || texto === 'CONTO' || texto === 'RELATO') {
-                return texto;
+            if (texto.toUpperCase().includes('GÊNERO') || texto.toUpperCase().includes('GENERO')) {
+                const irmao = el.nextElementSibling;
+                if (irmao) {
+                    const genero = irmao.textContent?.trim() || '';
+                    console.log('✅ Gênero:', genero);
+                    return genero;
+                }
             }
         }
         
         return 'DISSERTAÇÃO';
     }
 
-    async function fetchWithTimeout(resource, options = {}, timeout = 15000) {
+    async function fetchWithTimeout(resource, options = {}, timeout = 30000) {
         const controller = new AbortController();
         const id = setTimeout(() => controller.abort(), timeout);
         try {
@@ -250,65 +184,30 @@
             return response;
         } catch (error) {
             clearTimeout(id);
-            if (error.name === 'AbortError') throw new Error('Timeout');
             throw error;
         }
-    }
-
-    function limparFormatacao(texto) {
-        texto = texto.replace(/\*\*/g, '');
-        texto = texto.replace(/##/g, '');
-        texto = texto.replace(/__/g, '');
-        texto = texto.replace(/\n{3,}/g, '\n\n');
-        texto = texto.split('\n').map(linha => linha.trim()).join('\n');
-        return texto.trim();
     }
 
     async function gerarRedacaoComMistral(tema, maxPalavras, genero) {
         const minPalavras = Math.floor(maxPalavras * 0.8);
         
-        let prompt = '';
-        
-        if (genero.toUpperCase() === 'RESENHA') {
-            prompt = `Escreva uma RESENHA CRÍTICA sobre: "${tema}".
-        
-REGRAS:
-- NÃO use asteriscos (**), hashtags (##) ou formatação markdown
-- Título criativo e relevante
-- Estrutura: introdução, análise, pontos positivos/negativos, conclusão
-- Linguagem formal
-- ENTRE ${minPalavras} E ${maxPalavras} palavras
+        // Prompt mais direto e claro
+        const prompt = `Escreva uma redação completa sobre o tema: "${tema}"
 
-FORMATO EXATO:
-TÍTULO: [título]
-REDAÇÃO: [texto]`;
-        } else if (genero.toUpperCase() === 'ARTIGO') {
-            prompt = `Escreva um ARTIGO DE OPINIÃO sobre: "${tema}".
-        
-REGRAS:
-- NÃO use asteriscos ou formatação markdown
-- Título criativo
-- Estrutura: introdução, argumentos, exemplos, conclusão
-- ENTRE ${minPalavras} E ${maxPalavras} palavras
+Gênero: ${genero}
+Palavras: entre ${minPalavras} e ${maxPalavras}
 
-FORMATO EXATO:
-TÍTULO: [título]
-REDAÇÃO: [texto]`;
-        } else {
-            prompt = `Escreva uma DISSERTAÇÃO ARGUMENTATIVA sobre: "${tema}".
-        
-REGRAS:
-- NÃO use asteriscos ou formatação markdown
-- Título criativo
-- Introdução com tese, 2-3 parágrafos de desenvolvimento, conclusão com intervenção
-- ENTRE ${minPalavras} E ${maxPalavras} palavras
+REGRAS IMPORTANTES:
+1. NÃO use asteriscos (**), hashtags (##), ou markdown
+2. NÃO repita as instruções no texto
+3. Escreva apenas o título e a redação
 
-FORMATO EXATO:
-TÍTULO: [título]
-REDAÇÃO: [texto]`;
-        }
+Responda EXATAMENTE neste formato (substitua os colchetes):
 
-        let aiResponseText = null;
+TITULO: [escreva aqui apenas o título, uma frase curta]
+TEXTO: [escreva aqui a redação completa com todos os parágrafos]`;
+
+        let respostaCompleta = null;
 
         for (let i = 0; i < MISTRAL_API_KEYS.length; i++) {
             const currentKey = MISTRAL_API_KEYS[currentApiKeyIndex];
@@ -317,6 +216,8 @@ REDAÇÃO: [texto]`;
                 currentApiKeyIndex = (currentApiKeyIndex + 1) % MISTRAL_API_KEYS.length;
                 continue;
             }
+
+            console.log(`🔑 Tentando chave #${currentApiKeyIndex + 1}...`);
 
             try {
                 const response = await fetchWithTimeout(CONFIG.API_ENDPOINT, {
@@ -329,98 +230,131 @@ REDAÇÃO: [texto]`;
                         model: CONFIG.MODELO_MISTRAL,
                         messages: [{ role: "user", content: prompt }],
                         temperature: 0.7,
-                        max_tokens: Math.min(maxPalavras * 2, 4000)
+                        max_tokens: 4000
                     })
                 });
 
                 if (response.ok) {
                     const data = await response.json();
                     if (data.choices && data.choices[0] && data.choices[0].message) {
-                        aiResponseText = data.choices[0].message.content;
+                        respostaCompleta = data.choices[0].message.content;
+                        console.log('✅ Resposta recebida!');
+                        console.log('📝 Resposta bruta:', respostaCompleta);
                         break;
                     }
+                } else {
+                    const errorData = await response.json().catch(() => ({}));
+                    console.warn('❌ Erro API:', errorData);
                 }
             } catch (error) {
-                console.warn('Erro na chave:', error.message);
+                console.warn('❌ Erro:', error.message);
             }
 
             currentApiKeyIndex = (currentApiKeyIndex + 1) % MISTRAL_API_KEYS.length;
         }
 
-        if (!aiResponseText) {
+        if (!respostaCompleta) {
             alert('❌ Erro ao gerar redação!');
             return null;
         }
 
-        aiResponseText = limparFormatacao(aiResponseText);
+        // Remove formatação markdown
+        respostaCompleta = respostaCompleta
+            .replace(/\*\*/g, '')
+            .replace(/##/g, '')
+            .replace(/__/g, '');
 
-        const tituloMatch = aiResponseText.match(/TÍTULO:\s*(.+?)(?:\n|$)/i);
-        const redacaoMatch = aiResponseText.match(/REDAÇÃO:\s*([\s\S]+)/i);
-        
+        console.log('📝 Resposta limpa:', respostaCompleta);
+
+        // Extrai título e texto
         let titulo = '';
-        let redacao = '';
+        let texto = '';
+        
+        // Tenta encontrar "TITULO:" e "TEXTO:"
+        const tituloRegex = /TITULO:\s*(.+?)(?:\n|$)/i;
+        const textoRegex = /TEXTO:\s*([\s\S]+)/i;
+        
+        const tituloMatch = respostaCompleta.match(tituloRegex);
+        const textoMatch = respostaCompleta.match(textoRegex);
         
         if (tituloMatch) {
-            titulo = tituloMatch[1].trim().split('\n')[0].trim();
+            titulo = tituloMatch[1].trim();
+            console.log('📌 Título encontrado:', titulo);
         }
         
-        if (redacaoMatch) {
-            redacao = redacaoMatch[1].trim();
-        } else {
-            const linhas = aiResponseText.split('\n');
-            const idx = linhas.findIndex(l => l.toUpperCase().includes('REDAÇÃO'));
-            if (idx >= 0) redacao = linhas.slice(idx + 1).join('\n').trim();
+        if (textoMatch) {
+            texto = textoMatch[1].trim();
+            console.log('📄 Texto encontrado (tamanho):', texto.length);
         }
         
-        if (!titulo) {
-            const linhas = aiResponseText.split('\n').filter(l => l.trim());
-            titulo = linhas[0].replace(/TÍTULO:?\s*/i, '').trim();
+        // Se não encontrou, tenta "TÍTULO:" e "REDAÇÃO:"
+        if (!titulo || !texto) {
+            const tituloRegex2 = /TÍTULO:\s*(.+?)(?:\n|$)/i;
+            const textoRegex2 = /REDAÇÃO:\s*([\s\S]+)/i;
+            
+            const tituloMatch2 = respostaCompleta.match(tituloRegex2);
+            const textoMatch2 = respostaCompleta.match(textoRegex2);
+            
+            if (!titulo && tituloMatch2) {
+                titulo = tituloMatch2[1].trim();
+            }
+            
+            if (!texto && textoMatch2) {
+                texto = textoMatch2[1].trim();
+            }
         }
         
+        // Se ainda não encontrou, pega primeira linha como título e resto como texto
+        if (!titulo && !texto) {
+            const linhas = respostaCompleta.split('\n').filter(l => l.trim());
+            if (linhas.length > 1) {
+                titulo = linhas[0].trim();
+                texto = linhas.slice(1).join('\n').trim();
+            } else if (linhas.length === 1) {
+                titulo = linhas[0].trim().substring(0, 100);
+                texto = linhas[0].trim();
+            }
+        }
+        
+        // Se tem título mas não texto, o texto pode estar junto
+        if (titulo && !texto) {
+            texto = respostaCompleta.replace(titulo, '').trim();
+            if (!texto || texto.length < 10) {
+                texto = respostaCompleta.trim();
+            }
+        }
+        
+        // Se tem texto mas não título
+        if (!titulo && texto) {
+            const primeiraLinha = texto.split('\n')[0].trim();
+            if (primeiraLinha.length < 100) {
+                titulo = primeiraLinha;
+                texto = texto.split('\n').slice(1).join('\n').trim();
+            }
+        }
+        
+        // Limpeza final
         titulo = titulo.replace(/\*/g, '').trim();
-        redacao = redacao.replace(/\*/g, '').trim();
+        texto = texto.replace(/\*/g, '').trim();
         
-        if (titulo.length > 200) titulo = titulo.substring(0, 200);
-        
-        const palavras = redacao.split(/\s+/).length;
-        
-        return { titulo, redacao, palavras };
-    }
-
-    function instalarListenerClique() {
-        if (STATE.listenerInstalado && STATE.onDocClick) {
-            document.removeEventListener('click', STATE.onDocClick, true);
-            STATE.listenerInstalado = false;
+        // Garante que título não é o texto inteiro
+        if (titulo.length > 200) {
+            titulo = titulo.split('.')[0].trim();
+            if (titulo.length > 200) {
+                titulo = titulo.substring(0, 200);
+            }
         }
-
-        STATE.onDocClick = (e) => {
-            if (!STATE.aguardandoCampo) return;
-            const path = e.composedPath ? e.composedPath() : [];
-            if (path.some(n => n && n.id && String(n.id).startsWith('digitadorV5-'))) return;
-
-            e.preventDefault();
-            e.stopPropagation();
-            e.stopImmediatePropagation();
-            STATE.aguardandoCampo = false;
-
-            const el = e.target;
-            if (!el || (!el.isContentEditable && el.tagName !== 'INPUT' && el.tagName !== 'TEXTAREA')) {
-                alert('❌ Campo inválido!');
-                STATE.aguardandoCampo = true;
-                return;
-            }
-
-            const texto = STATE.modo === 'titulo' ? STATE.tituloRedacao : STATE.textoRedacao;
-            if (!texto) {
-                alert('❌ Texto não encontrado!');
-                return;
-            }
-
-            digitarRapidamente(el, texto);
-        };
-
-        document.addEventListener('click', STATE.onDocClick, true);
-        STATE.listenerInstalado = true;
+        
+        // Remove linhas em branco extras
+        texto = texto.replace(/\n{3,}/g, '\n\n');
+        
+        const palavras = texto.split(/\s+/).filter(p => p.length > 0).length;
+        
+        console.log('📌 Título final:', titulo);
+        console.log('📄 Texto final (palavras):', palavras);
+        console.log('📄 Primeiros 100 caracteres:', texto.substring(0, 100));
+        
+        return { titulo, texto, palavras };
     }
 
     function digitarRapidamente(el, texto) {
@@ -434,8 +368,7 @@ REDAÇÃO: [texto]`;
         STATE.currentIndex = 0;
 
         const isInputEl = (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA');
-        const isContentEditable = !!el.isContentEditable;
-
+        
         try {
             if (isInputEl) {
                 el.readOnly = false;
@@ -445,7 +378,7 @@ REDAÇÃO: [texto]`;
         } catch (_) {}
 
         let i = 0;
-        const velocidade = parseInt(STATE.currentSpeed, 10) || 1;
+        const velocidade = 1; // Máxima velocidade
 
         function digitar() {
             if (i < texto.length) {
@@ -454,21 +387,15 @@ REDAÇÃO: [texto]`;
                 try {
                     if (isInputEl) {
                         const pos = el.selectionStart || el.value.length;
-                        if (typeof el.setRangeText === 'function') {
-                            el.setRangeText(ch, pos, pos, 'end');
-                        } else {
-                            el.value = el.value.slice(0, pos) + ch + el.value.slice(pos);
-                            el.setSelectionRange(pos + 1, pos + 1);
-                        }
-                    } else if (isContentEditable) {
+                        el.setRangeText(ch, pos, pos, 'end');
+                    } else if (el.isContentEditable) {
                         const doc = el.ownerDocument || document;
                         const sel = doc.getSelection();
                         let range;
                         if (sel && sel.rangeCount) {
                             range = sel.getRangeAt(0).cloneRange();
-                            if (!el.contains(range.commonAncestorContainer)) range = null;
                         }
-                        if (!range) {
+                        if (!range || !el.contains(range.commonAncestorContainer)) {
                             range = doc.createRange();
                             range.selectNodeContents(el);
                             range.collapse(false);
@@ -479,14 +406,11 @@ REDAÇÃO: [texto]`;
                             sel.removeAllRanges();
                             sel.addRange(range);
                         }
-                    } else {
-                        el.innerText = (el.innerText || '') + ch;
                     }
                     
                     el.dispatchEvent(new Event('input', { bubbles: true }));
                 } catch (_) {}
                 
-                STATE.currentIndex = i;
                 STATE.typingTimeoutId = setTimeout(digitar, velocidade);
             } else {
                 STATE.typingTimeoutId = null;
@@ -512,19 +436,17 @@ REDAÇÃO: [texto]`;
         if (STATE.modo === 'titulo') {
             STATE.modo = 'redacao';
             
-            // Tenta auto-detectar o campo de redação
             if (STATE.autoDeteccao) {
                 const campoRedacao = detectarCampoRedacao();
                 if (campoRedacao) {
                     console.log('🎯 Auto-inserindo redação...');
                     setTimeout(() => {
-                        autoInserirTexto(campoRedacao, STATE.textoRedacao);
+                        digitarRapidamente(campoRedacao, STATE.textoRedacao);
                     }, 500);
                     return;
                 }
             }
             
-            // Fallback: modo manual
             STATE.aguardandoCampo = true;
             alert('✅ Título inserido!\n📄 Agora clique no campo de REDAÇÃO.');
         } else if (STATE.modo === 'redacao') {
@@ -546,8 +468,6 @@ REDAÇÃO: [texto]`;
         if (STATE.maxPalavras < 50) STATE.maxPalavras = 300;
         if (STATE.maxPalavras > 2000) STATE.maxPalavras = 2000;
 
-        STATE.currentSpeed = CONFIG.VELOCIDADE;
-
         STATE.generoRedacao = extrairGeneroRedacao();
         const tema = extrairTemaRedacao();
         
@@ -556,34 +476,61 @@ REDAÇÃO: [texto]`;
             return;
         }
         
-        alert('✅ Tema: "' + tema + '"\n📝 Gênero: ' + STATE.generoRedacao + '\n📊 Palavras: ' + STATE.maxPalavras + '\n⚡ Velocidade máxima\n🤖 Gerando redação...');
+        alert('✅ Tema: "' + tema + '"\n📝 Gênero: ' + STATE.generoRedacao + '\n📊 Palavras: ' + STATE.maxPalavras + '\n🤖 Gerando redação...');
 
-        const redacao = await gerarRedacaoComMistral(tema, STATE.maxPalavras, STATE.generoRedacao);
-        if (!redacao) return;
+        const resultado = await gerarRedacaoComMistral(tema, STATE.maxPalavras, STATE.generoRedacao);
+        if (!resultado) return;
 
-        STATE.tituloRedacao = redacao.titulo;
-        STATE.textoRedacao = redacao.redacao;
+        STATE.tituloRedacao = resultado.titulo;
+        STATE.textoRedacao = resultado.texto;
 
-        // Tenta auto-detectar o campo de título
+        // Mostra preview no console para debug
+        console.log('===================================');
+        console.log('TÍTULO:', STATE.tituloRedacao);
+        console.log('TEXTO:', STATE.textoRedacao);
+        console.log('PALAVRAS:', resultado.palavras);
+        console.log('===================================');
+
         const campoTitulo = detectarCampoTitulo();
         
         if (campoTitulo) {
-            alert('✅ Redação criada! (' + redacao.palavras + ' palavras)\n🎯 Inserindo automaticamente no campo de TÍTULO...');
-            
+            alert('✅ Redação criada! (' + resultado.palavras + ' palavras)\n🎯 Inserindo automaticamente...');
             STATE.modo = 'titulo';
             STATE.aguardandoCampo = false;
-            autoInserirTexto(campoTitulo, STATE.tituloRedacao);
+            digitarRapidamente(campoTitulo, STATE.tituloRedacao);
         } else {
-            alert('✅ Redação criada! (' + redacao.palavras + ' palavras)\n🎯 Clique no campo de TÍTULO.');
-            
+            alert('✅ Redação criada! (' + resultado.palavras + ' palavras)\n🎯 Clique no campo de TÍTULO.');
             STATE.modo = 'titulo';
             STATE.aguardandoCampo = true;
-            instalarListenerClique();
+            
+            // Instala listener se ainda não tem
+            if (!STATE.listenerInstalado) {
+                STATE.onDocClick = (e) => {
+                    if (!STATE.aguardandoCampo) return;
+                    
+                    e.preventDefault();
+                    e.stopPropagation();
+                    STATE.aguardandoCampo = false;
+
+                    const el = e.target;
+                    if (!el || (el.tagName !== 'INPUT' && el.tagName !== 'TEXTAREA' && !el.isContentEditable)) {
+                        alert('❌ Campo inválido!');
+                        STATE.aguardandoCampo = true;
+                        return;
+                    }
+
+                    const texto = STATE.modo === 'titulo' ? STATE.tituloRedacao : STATE.textoRedacao;
+                    digitarRapidamente(el, texto);
+                };
+                
+                document.addEventListener('click', STATE.onDocClick, true);
+                STATE.listenerInstalado = true;
+            }
         }
     }
 
     window.iniciarDigitadorV5 = iniciar;
-    console.log('🚀 Digitador com auto-detecção carregado!');
+    console.log('🚀 Digitador carregado!');
     iniciar();
 
 })();
