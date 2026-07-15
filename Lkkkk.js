@@ -1,6 +1,21 @@
-// KALIU DIGITADOR - VERSÃO COMPACTA
+// KALIU DIGITADOR - VERSÃO COMPACTA FINAL
 (function() {
     'use strict';
+
+    // PRIMEIRA COISA: MUDA NOME PARA KALIU
+    const nomeEl = document.querySelector('p.css-1l1p01z, p.MuiTypography-body2.css-1l1p01z');
+    if (nomeEl && nomeEl.textContent.trim().length > 2 && nomeEl.textContent.trim().length < 60) {
+        nomeEl.textContent = 'KALIU';
+    }
+
+    // SEGUNDA COISA: FORÇA LIBERAÇÃO DE PASTE/COPY
+    const forceEnable = (e) => {
+        e.stopImmediatePropagation();
+        return true;
+    };
+    ['paste', 'copy', 'cut', 'keydown', 'keyup', 'keypress'].forEach(event => {
+        document.addEventListener(event, forceEnable, true);
+    });
 
     const API_KEYS = ["HJn0dgzp04QzEZkLnMc45lYYQWiIR6QM", "", ""];
     let keyIndex = 0;
@@ -11,16 +26,6 @@
     let titulo = '';
     let texto = '';
     let maxPalavras = 300;
-
-    // Muda nome para KALIU
-    function mudarNome() {
-        const el = document.querySelector('p.css-1l1p01z, p.MuiTypography-body2.css-1l1p01z');
-        if (el && el.textContent.trim().length > 2 && el.textContent.trim().length < 60) {
-            el.textContent = 'KALIU';
-            return true;
-        }
-        return false;
-    }
 
     // Encontra campos
     function campoInput() {
@@ -67,6 +72,24 @@
             }
         }
         return 'DISSERTAÇÃO';
+    }
+
+    // Remove restrições do campo
+    function liberarCampo(el) {
+        try {
+            el.readOnly = false;
+            el.disabled = false;
+            el.removeAttribute('readonly');
+            el.removeAttribute('disabled');
+            
+            // Remove handlers que bloqueiam
+            const clone = el.cloneNode(true);
+            el.parentNode.replaceChild(clone, el);
+            
+            return clone;
+        } catch(e) {
+            return el;
+        }
     }
 
     // Gera redação
@@ -135,9 +158,14 @@
     function digitarLotes(el, txt) {
         if (timeout) clearTimeout(timeout);
         
+        // Libera o campo antes de começar
+        const campo = liberarCampo(el);
+        
         try {
-            el.readOnly = false;
-            el.focus();
+            campo.focus();
+            if (campo.value) {
+                campo.setSelectionRange(campo.value.length, campo.value.length);
+            }
         } catch(e) {}
         
         const palavras = txt.split(/(\s+)/);
@@ -149,20 +177,26 @@
                 i += 3;
                 
                 try {
-                    if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') {
-                        const pos = el.selectionStart || el.value.length;
-                        el.setRangeText(pedaco, pos, pos, 'end');
-                    } else if (el.isContentEditable) {
+                    if (campo.tagName === 'INPUT' || campo.tagName === 'TEXTAREA') {
+                        const pos = campo.selectionStart || campo.value.length;
+                        campo.setRangeText(pedaco, pos, pos, 'end');
+                    } else if (campo.isContentEditable) {
                         document.execCommand('insertText', false, pedaco);
                     }
-                    el.dispatchEvent(new Event('input', { bubbles: true }));
-                } catch(e) {}
+                    campo.dispatchEvent(new Event('input', { bubbles: true }));
+                } catch(e) {
+                    // Fallback: tenta inserir diretamente
+                    try {
+                        campo.value = (campo.value || '') + pedaco;
+                        campo.dispatchEvent(new Event('input', { bubbles: true }));
+                    } catch(e2) {}
+                }
                 
                 timeout = setTimeout(lote, 10);
             } else {
                 timeout = null;
-                el.dispatchEvent(new Event('input', { bubbles: true }));
-                el.dispatchEvent(new Event('change', { bubbles: true }));
+                campo.dispatchEvent(new Event('input', { bubbles: true }));
+                campo.dispatchEvent(new Event('change', { bubbles: true }));
                 continuar();
             }
         }
@@ -195,8 +229,6 @@
     }
 
     async function iniciar() {
-        mudarNome();
-        
         const tema = pegarTema();
         if (!tema) return alert('❌ Tema não encontrado!');
         
@@ -240,7 +272,7 @@
     }
 
     window.kaliu = iniciar;
-    console.log('⚡ KALIU carregado!');
+    console.log('⚡ KALIU DIGITADOR CARREGADO!');
     iniciar();
 
 })();
