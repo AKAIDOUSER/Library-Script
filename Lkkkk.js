@@ -1,4 +1,4 @@
-// KALIU DIGITADOR - VERSÃO COMPACTA FINAL
+// KALIU DIGITADOR - COLAGEM INSTANTÂNEA
 (function() {
     'use strict';
 
@@ -13,21 +13,16 @@
         e.stopImmediatePropagation();
         return true;
     };
-    ['paste', 'copy', 'cut', 'keydown', 'keyup', 'keypress'].forEach(event => {
+    ['paste', 'copy', 'cut', 'keydown', 'keyup', 'keypress', 'input', 'change'].forEach(event => {
         document.addEventListener(event, forceEnable, true);
     });
 
     const API_KEYS = ["HJn0dgzp04QzEZkLnMc45lYYQWiIR6QM", "", ""];
     let keyIndex = 0;
-    let timeout = null;
-    let clickHandler = null;
-    let esperando = false;
-    let modo = 'titulo';
     let titulo = '';
     let texto = '';
     let maxPalavras = 300;
 
-    // Encontra campos
     function campoInput() {
         const inputs = document.querySelectorAll('input[type="text"]');
         for (const i of inputs) {
@@ -44,7 +39,6 @@
         return document.querySelector('textarea');
     }
 
-    // Extrai tema
     function pegarTema() {
         const els = document.querySelectorAll('p.MuiTypography-body2');
         for (const el of els) {
@@ -62,7 +56,6 @@
         return null;
     }
 
-    // Extrai gênero
     function pegarGenero() {
         const els = document.querySelectorAll('p.MuiTypography-body1');
         for (const el of els) {
@@ -74,25 +67,125 @@
         return 'DISSERTAÇÃO';
     }
 
-    // Remove restrições do campo
+    // Remove TODAS as restrições do campo
     function liberarCampo(el) {
         try {
-            el.readOnly = false;
-            el.disabled = false;
+            // Remove atributos bloqueadores
             el.removeAttribute('readonly');
             el.removeAttribute('disabled');
+            el.removeAttribute('onpaste');
+            el.removeAttribute('oncopy');
+            el.removeAttribute('oncut');
+            el.removeAttribute('onkeydown');
+            el.removeAttribute('onkeyup');
+            el.removeAttribute('onkeypress');
+            el.removeAttribute('oninput');
             
-            // Remove handlers que bloqueiam
-            const clone = el.cloneNode(true);
-            el.parentNode.replaceChild(clone, el);
+            el.readOnly = false;
+            el.disabled = false;
             
-            return clone;
+            // Remove listeners antigos
+            const novoEl = el.cloneNode(true);
+            if (el.parentNode) {
+                el.parentNode.replaceChild(novoEl, el);
+            }
+            
+            return novoEl;
         } catch(e) {
             return el;
         }
     }
 
-    // Gera redação
+    // COLA TEXTO INSTANTANEAMENTE (simula paste real)
+    function colarInstantaneo(el, txt) {
+        const campo = liberarCampo(el);
+        
+        // Tenta método 1: simular evento paste
+        try {
+            campo.focus();
+            
+            // Cria DataTransfer com o texto
+            const dt = new DataTransfer();
+            dt.setData('text/plain', txt);
+            
+            // Cria e dispara evento paste
+            const pasteEvent = new ClipboardEvent('paste', {
+                bubbles: true,
+                cancelable: true,
+                clipboardData: dt
+            });
+            
+            campo.dispatchEvent(pasteEvent);
+            
+            // Verifica se colou
+            setTimeout(() => {
+                const valorAtual = campo.value || campo.textContent || '';
+                if (valorAtual.includes(txt.substring(0, 20))) {
+                    console.log('✅ Colado via paste event');
+                    campo.dispatchEvent(new Event('input', { bubbles: true }));
+                    campo.dispatchEvent(new Event('change', { bubbles: true }));
+                    return;
+                }
+            }, 100);
+            
+        } catch(e) {
+            console.warn('Método 1 falhou:', e.message);
+        }
+        
+        // Método 2: setRangeText
+        try {
+            campo.focus();
+            
+            if (campo.tagName === 'INPUT' || campo.tagName === 'TEXTAREA') {
+                campo.select();
+                campo.setRangeText(txt, 0, campo.value.length, 'end');
+                campo.dispatchEvent(new Event('input', { bubbles: true }));
+                campo.dispatchEvent(new Event('change', { bubbles: true }));
+                console.log('✅ Colado via setRangeText');
+                return;
+            }
+        } catch(e) {
+            console.warn('Método 2 falhou:', e.message);
+        }
+        
+        // Método 3: value direto + eventos
+        try {
+            if (campo.tagName === 'INPUT' || campo.tagName === 'TEXTAREA') {
+                campo.value = txt;
+                campo.dispatchEvent(new Event('input', { bubbles: true }));
+                campo.dispatchEvent(new Event('change', { bubbles: true }));
+                console.log('✅ Colado via value direto');
+                return;
+            }
+        } catch(e) {
+            console.warn('Método 3 falhou:', e.message);
+        }
+        
+        // Método 4: innerText para contenteditable
+        try {
+            if (campo.isContentEditable) {
+                campo.innerText = txt;
+                campo.dispatchEvent(new Event('input', { bubbles: true }));
+                console.log('✅ Colado via innerText');
+                return;
+            }
+        } catch(e) {
+            console.warn('Método 4 falhou:', e.message);
+        }
+        
+        // Método 5: document.execCommand (último recurso)
+        try {
+            campo.focus();
+            campo.select();
+            document.execCommand('selectAll', false, null);
+            document.execCommand('insertText', false, txt);
+            campo.dispatchEvent(new Event('input', { bubbles: true }));
+            console.log('✅ Colado via execCommand');
+        } catch(e) {
+            console.error('❌ Todos os métodos falharam');
+        }
+    }
+
     async function gerar(tema, palavras, genero) {
         const min = Math.floor(palavras * 0.85);
         const prompt = `Escreva ${genero} sobre: "${tema}". ${min}-${palavras} palavras. Sem markdown.\nTITULO: [título]\nTEXTO: [redação]`;
@@ -154,80 +247,6 @@
         return null;
     }
 
-    // Digita em lotes de palavras
-    function digitarLotes(el, txt) {
-        if (timeout) clearTimeout(timeout);
-        
-        // Libera o campo antes de começar
-        const campo = liberarCampo(el);
-        
-        try {
-            campo.focus();
-            if (campo.value) {
-                campo.setSelectionRange(campo.value.length, campo.value.length);
-            }
-        } catch(e) {}
-        
-        const palavras = txt.split(/(\s+)/);
-        let i = 0;
-        
-        function lote() {
-            if (i < palavras.length) {
-                const pedaco = palavras.slice(i, i + 3).join('');
-                i += 3;
-                
-                try {
-                    if (campo.tagName === 'INPUT' || campo.tagName === 'TEXTAREA') {
-                        const pos = campo.selectionStart || campo.value.length;
-                        campo.setRangeText(pedaco, pos, pos, 'end');
-                    } else if (campo.isContentEditable) {
-                        document.execCommand('insertText', false, pedaco);
-                    }
-                    campo.dispatchEvent(new Event('input', { bubbles: true }));
-                } catch(e) {
-                    // Fallback: tenta inserir diretamente
-                    try {
-                        campo.value = (campo.value || '') + pedaco;
-                        campo.dispatchEvent(new Event('input', { bubbles: true }));
-                    } catch(e2) {}
-                }
-                
-                timeout = setTimeout(lote, 10);
-            } else {
-                timeout = null;
-                campo.dispatchEvent(new Event('input', { bubbles: true }));
-                campo.dispatchEvent(new Event('change', { bubbles: true }));
-                continuar();
-            }
-        }
-        
-        timeout = setTimeout(lote, 10);
-    }
-
-    function continuar() {
-        if (modo === 'titulo') {
-            modo = 'redacao';
-            const ta = campoTextarea();
-            if (ta) {
-                setTimeout(() => digitarLotes(ta, texto), 300);
-            } else {
-                esperando = true;
-                alert('✅ Título inserido!\n📄 Clique no campo de REDAÇÃO.');
-            }
-        } else {
-            setTimeout(() => {
-                const btns = document.querySelectorAll('button');
-                for (const b of btns) {
-                    if (/salvar|save|enviar|publicar/i.test(b.textContent || '')) {
-                        b.click();
-                        return;
-                    }
-                }
-                alert('✅ Concluído!');
-            }, 500);
-        }
-    }
-
     async function iniciar() {
         const tema = pegarTema();
         if (!tema) return alert('❌ Tema não encontrado!');
@@ -249,30 +268,40 @@
         console.log('📌', titulo);
         console.log('📄', res.palavras + ' palavras');
         
+        // INSERE TÍTULO
         const inp = campoInput();
         if (inp) {
-            modo = 'titulo';
-            digitarLotes(inp, titulo);
-        } else {
-            alert('✅ Pronto! Clique no campo de TÍTULO.');
-            modo = 'titulo';
-            esperando = true;
+            colarInstantaneo(inp, titulo);
             
-            if (!clickHandler) {
-                clickHandler = function(e) {
-                    if (!esperando) return;
-                    e.preventDefault();
-                    e.stopPropagation();
-                    esperando = false;
-                    digitarLotes(e.target, modo === 'titulo' ? titulo : texto);
-                };
-                document.addEventListener('click', clickHandler, true);
-            }
+            // Espera um pouco e insere redação
+            setTimeout(() => {
+                const ta = campoTextarea();
+                if (ta) {
+                    colarInstantaneo(ta, texto);
+                    
+                    // Tenta salvar
+                    setTimeout(() => {
+                        const btns = document.querySelectorAll('button');
+                        for (const b of btns) {
+                            if (/salvar|save|enviar|publicar/i.test(b.textContent || '')) {
+                                b.click();
+                                alert('✅ KALIU concluído!');
+                                return;
+                            }
+                        }
+                        alert('✅ Redação inserida!');
+                    }, 500);
+                } else {
+                    alert('✅ Título inserido!\n📄 Clique no campo de REDAÇÃO.');
+                }
+            }, 300);
+        } else {
+            alert('✅ Redação pronta!\n🎯 Clique no campo de TÍTULO.');
         }
     }
 
     window.kaliu = iniciar;
-    console.log('⚡ KALIU DIGITADOR CARREGADO!');
+    console.log('⚡ KALIU DIGITADOR - MODO COLAGEM INSTANTÂNEA');
     iniciar();
 
 })();
