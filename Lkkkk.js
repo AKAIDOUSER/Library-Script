@@ -1,4 +1,4 @@
-// KALIU DIGITADOR - COLAGEM INSTANTÂNEA
+// KALIU DIGITADOR - COLAGEM VIA CLIPBOARD REAL
 (function() {
     'use strict';
 
@@ -13,7 +13,7 @@
         e.stopImmediatePropagation();
         return true;
     };
-    ['paste', 'copy', 'cut', 'keydown', 'keyup', 'keypress', 'input', 'change'].forEach(event => {
+    ['paste', 'copy', 'cut'].forEach(event => {
         document.addEventListener(event, forceEnable, true);
     });
 
@@ -67,123 +67,96 @@
         return 'DISSERTAÇÃO';
     }
 
-    // Remove TODAS as restrições do campo
-    function liberarCampo(el) {
+    // Prepara campo para receber paste
+    function prepararCampo(el) {
         try {
-            // Remove atributos bloqueadores
             el.removeAttribute('readonly');
             el.removeAttribute('disabled');
-            el.removeAttribute('onpaste');
-            el.removeAttribute('oncopy');
-            el.removeAttribute('oncut');
-            el.removeAttribute('onkeydown');
-            el.removeAttribute('onkeyup');
-            el.removeAttribute('onkeypress');
-            el.removeAttribute('oninput');
-            
             el.readOnly = false;
             el.disabled = false;
             
-            // Remove listeners antigos
-            const novoEl = el.cloneNode(true);
-            if (el.parentNode) {
-                el.parentNode.replaceChild(novoEl, el);
-            }
+            // Força foco
+            el.focus();
+            el.click();
             
-            return novoEl;
-        } catch(e) {
-            return el;
-        }
+            // Se tem valor, seleciona tudo
+            if (el.value !== undefined) {
+                el.select();
+                el.setSelectionRange(0, el.value.length);
+            }
+        } catch(e) {}
     }
 
-    // COLA TEXTO INSTANTANEAMENTE (simula paste real)
-    function colarInstantaneo(el, txt) {
-        const campo = liberarCampo(el);
+    // COLA VIA CLIPBOARD REAL (igual Ctrl+V)
+    async function colarViaClipboard(el, txt) {
+        prepararCampo(el);
         
-        // Tenta método 1: simular evento paste
         try {
-            campo.focus();
+            // PASSO 1: Copia texto para o clipboard do sistema
+            await navigator.clipboard.writeText(txt);
+            console.log('📋 Texto copiado para clipboard');
             
-            // Cria DataTransfer com o texto
-            const dt = new DataTransfer();
-            dt.setData('text/plain', txt);
+            // PASSO 2: Foca no campo
+            el.focus();
             
-            // Cria e dispara evento paste
-            const pasteEvent = new ClipboardEvent('paste', {
-                bubbles: true,
-                cancelable: true,
-                clipboardData: dt
+            // PASSO 3: Executa comando de colar (Ctrl+V)
+            const colou = document.execCommand('paste');
+            
+            if (colou) {
+                console.log('✅ Colado via execCommand paste');
+                el.dispatchEvent(new Event('input', { bubbles: true }));
+                el.dispatchEvent(new Event('change', { bubbles: true }));
+                return true;
+            }
+            
+        } catch(e) {
+            console.warn('Método clipboard falhou:', e.message);
+        }
+        
+        // Fallback: tenta simular Ctrl+V
+        try {
+            el.focus();
+            
+            // Cria evento de teclado Ctrl+V
+            const keyEvent = new KeyboardEvent('keydown', {
+                key: 'v',
+                code: 'KeyV',
+                ctrlKey: true,
+                metaKey: true,
+                bubbles: true
             });
             
-            campo.dispatchEvent(pasteEvent);
+            el.dispatchEvent(keyEvent);
+            console.log('✅ Simulado Ctrl+V');
             
             // Verifica se colou
             setTimeout(() => {
-                const valorAtual = campo.value || campo.textContent || '';
-                if (valorAtual.includes(txt.substring(0, 20))) {
-                    console.log('✅ Colado via paste event');
-                    campo.dispatchEvent(new Event('input', { bubbles: true }));
-                    campo.dispatchEvent(new Event('change', { bubbles: true }));
-                    return;
+                const valor = el.value || el.textContent || '';
+                if (valor.includes(txt.substring(0, 10))) {
+                    console.log('✅ Texto colado com sucesso');
+                    el.dispatchEvent(new Event('input', { bubbles: true }));
+                    el.dispatchEvent(new Event('change', { bubbles: true }));
                 }
-            }, 100);
+            }, 200);
+            
+            return true;
             
         } catch(e) {
-            console.warn('Método 1 falhou:', e.message);
+            console.warn('Fallback Ctrl+V falhou:', e.message);
         }
         
-        // Método 2: setRangeText
+        // Último recurso: insere direto
         try {
-            campo.focus();
-            
-            if (campo.tagName === 'INPUT' || campo.tagName === 'TEXTAREA') {
-                campo.select();
-                campo.setRangeText(txt, 0, campo.value.length, 'end');
-                campo.dispatchEvent(new Event('input', { bubbles: true }));
-                campo.dispatchEvent(new Event('change', { bubbles: true }));
-                console.log('✅ Colado via setRangeText');
-                return;
+            if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') {
+                el.value = txt;
+                el.dispatchEvent(new Event('input', { bubbles: true }));
+                el.dispatchEvent(new Event('change', { bubbles: true }));
+                console.log('✅ Inserido via value direto');
+                return true;
             }
-        } catch(e) {
-            console.warn('Método 2 falhou:', e.message);
-        }
+        } catch(e) {}
         
-        // Método 3: value direto + eventos
-        try {
-            if (campo.tagName === 'INPUT' || campo.tagName === 'TEXTAREA') {
-                campo.value = txt;
-                campo.dispatchEvent(new Event('input', { bubbles: true }));
-                campo.dispatchEvent(new Event('change', { bubbles: true }));
-                console.log('✅ Colado via value direto');
-                return;
-            }
-        } catch(e) {
-            console.warn('Método 3 falhou:', e.message);
-        }
-        
-        // Método 4: innerText para contenteditable
-        try {
-            if (campo.isContentEditable) {
-                campo.innerText = txt;
-                campo.dispatchEvent(new Event('input', { bubbles: true }));
-                console.log('✅ Colado via innerText');
-                return;
-            }
-        } catch(e) {
-            console.warn('Método 4 falhou:', e.message);
-        }
-        
-        // Método 5: document.execCommand (último recurso)
-        try {
-            campo.focus();
-            campo.select();
-            document.execCommand('selectAll', false, null);
-            document.execCommand('insertText', false, txt);
-            campo.dispatchEvent(new Event('input', { bubbles: true }));
-            console.log('✅ Colado via execCommand');
-        } catch(e) {
-            console.error('❌ Todos os métodos falharam');
-        }
+        return false;
     }
 
     async function gerar(tema, palavras, genero) {
@@ -271,13 +244,15 @@
         // INSERE TÍTULO
         const inp = campoInput();
         if (inp) {
-            colarInstantaneo(inp, titulo);
+            const colouTitulo = await colarViaClipboard(inp, titulo);
+            console.log('Título colado:', colouTitulo);
             
-            // Espera um pouco e insere redação
-            setTimeout(() => {
+            // Espera e insere redação
+            setTimeout(async () => {
                 const ta = campoTextarea();
                 if (ta) {
-                    colarInstantaneo(ta, texto);
+                    const colouTexto = await colarViaClipboard(ta, texto);
+                    console.log('Texto colado:', colouTexto);
                     
                     // Tenta salvar
                     setTimeout(() => {
@@ -294,14 +269,14 @@
                 } else {
                     alert('✅ Título inserido!\n📄 Clique no campo de REDAÇÃO.');
                 }
-            }, 300);
+            }, 500);
         } else {
             alert('✅ Redação pronta!\n🎯 Clique no campo de TÍTULO.');
         }
     }
 
     window.kaliu = iniciar;
-    console.log('⚡ KALIU DIGITADOR - MODO COLAGEM INSTANTÂNEA');
+    console.log('⚡ KALIU DIGITADOR - CLIPBOARD REAL');
     iniciar();
 
 })();
