@@ -1,22 +1,12 @@
 (function(){
     const FIREBASE_URL='https://scriptsed-default-rtdb.firebaseio.com/';
+    const API_KEY='AIzaSyBte51pb6Oyg1d_mUmi0N2LgBhCPRoQ3uk';
+    
     const SITES={
-        'pt.khanacademy.org':{
-            nome:'Khan Academy',
-            icone:'🎓'
-        },
-        'leiaparana.odilo.us':{
-            nome:'Leia Paraná',
-            icone:'📚'
-        },
-        'wayground.com':{
-            nome:'Wayground',
-            icone:'🌍'
-        },
-        'redacao.pr.gov.br':{
-            nome:'Redação',
-            icone:'📝'
-        }
+        'pt.khanacademy.org':{nome:'Khan Academy',icone:'🎓'},
+        'leiaparana.odilo.us':{nome:'Leia Paraná',icone:'📚'},
+        'wayground.com':{nome:'Wayground',icone:'🌍'},
+        'redacao.pr.gov.br':{nome:'Redação',icone:'📝'}
     };
 
     const hostname=window.location.hostname;
@@ -63,12 +53,17 @@
 
     console.log('📧 Email encontrado:',email);
 
-    fetch(`${FIREBASE_URL}Users.json?orderBy="email"&equalTo="${encodeURIComponent(email)}"`)
+    // Tenta com auth via REST API
+    const url=`${FIREBASE_URL}Users.json?orderBy="email"&equalTo="${encodeURIComponent(email)}"&auth=${API_KEY}`;
+    console.log('📡 Consultando:',url);
+
+    fetch(url)
         .then(r=>{
-            if(!r.ok)throw new Error('HTTP '+r.status);
+            if(!r.ok)throw new Error('HTTP '+r.status+' - Verifique as regras do Firebase');
             return r.json();
         })
         .then(data=>{
+            console.log('📦 Resposta:',data);
             if(data&&Object.keys(data).length>0){
                 const userId=Object.keys(data)[0];
                 const user=data[userId];
@@ -128,7 +123,7 @@
             }
         })
         .catch(err=>{
-            alert('⚠️ ERRO AO CONECTAR AO FIREBASE!\n\n'+err.message+'\n\nVerifique sua conexão.');
+            alert('⚠️ ERRO AO CONECTAR AO FIREBASE!\n\n'+err.message+'\n\nVerifique as regras de segurança do Firebase.');
             console.error('❌ Erro:',err);
         });
 
