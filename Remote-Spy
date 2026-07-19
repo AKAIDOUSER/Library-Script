@@ -1,6 +1,6 @@
 javascript:(function() {
     // ============================================
-    // REMOTE SPY PRO - Bookmarklet
+    // REMOTE SPY PRO - Bookmarklet v2.0
     // ============================================
     
     // Estilos CSS
@@ -11,6 +11,7 @@ javascript:(function() {
             --spy-secondary: #7b2ffc;
             --spy-danger: #ff6b6b;
             --spy-warning: #feca57;
+            --spy-success: #2ecc71;
             --spy-text: #e0e0e0;
             --spy-card: rgba(255,255,255,0.05);
             --spy-border: rgba(0,245,212,0.2);
@@ -74,6 +75,10 @@ javascript:(function() {
             padding: 2px 8px;
             border-radius: 10px;
             font-size: 10px;
+        }
+        
+        #spy-title .badge.saved {
+            background: var(--spy-success);
         }
         
         #spy-controls {
@@ -176,6 +181,15 @@ javascript:(function() {
             background: #ff7a7a;
         }
         
+        .spy-btn.success {
+            background: var(--spy-success);
+            border-color: var(--spy-success);
+        }
+        
+        .spy-btn.success:hover {
+            background: #40d47e;
+        }
+        
         #spy-body {
             flex: 1;
             overflow-y: auto;
@@ -218,6 +232,10 @@ javascript:(function() {
             background: rgba(254,202,87,0.1);
         }
         
+        .spy-entry.saved-indicator {
+            border-left-color: var(--spy-success);
+        }
+        
         .spy-entry .method {
             display: inline-block;
             font-weight: bold;
@@ -231,6 +249,8 @@ javascript:(function() {
         .spy-entry .method.POST { color: #ff6b6b; }
         .spy-entry .method.PUT { color: #feca57; }
         .spy-entry .method.DELETE { color: #ff4757; }
+        .spy-entry .method.WS_SEND { color: #a29bfe; }
+        .spy-entry .method.WS_RECV { color: #fd79a8; }
         
         .spy-entry .url {
             color: #a8e6cf;
@@ -288,6 +308,12 @@ javascript:(function() {
             float: right;
         }
         
+        .spy-entry .save-status {
+            color: var(--spy-success);
+            font-size: 9px;
+            margin-left: 4px;
+        }
+        
         #spy-status {
             padding: 6px 12px;
             background: rgba(0,0,0,0.2);
@@ -297,10 +323,24 @@ javascript:(function() {
             display: flex;
             justify-content: space-between;
             flex-shrink: 0;
+            flex-wrap: wrap;
+            gap: 4px;
         }
         
         #spy-status .count {
             color: var(--spy-primary);
+        }
+        
+        #spy-status .saved-count {
+            color: var(--spy-success);
+        }
+        
+        .spy-storage-info {
+            background: rgba(0,0,0,0.3);
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 9px;
+            color: rgba(255,255,255,0.4);
         }
         
         @media (max-width: 768px) {
@@ -353,6 +393,52 @@ javascript:(function() {
     }
 
     // ============================================
+    // STORAGE MANAGER
+    // ============================================
+    const STORAGE_KEY = 'remote_spy_entries';
+    const MAX_STORAGE_ENTRIES = 1000;
+
+    function saveToStorage(entries) {
+        try {
+            // Limitar quantidade de entradas para não estourar o storage
+            const toSave = entries.slice(-MAX_STORAGE_ENTRIES);
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave));
+            return true;
+        } catch (e) {
+            console.warn('Erro ao salvar no localStorage:', e);
+            return false;
+        }
+    }
+
+    function loadFromStorage() {
+        try {
+            const data = localStorage.getItem(STORAGE_KEY);
+            if (data) {
+                const parsed = JSON.parse(data);
+                if (Array.isArray(parsed)) {
+                    return parsed;
+                }
+            }
+        } catch (e) {
+            console.warn('Erro ao carregar do localStorage:', e);
+        }
+        return [];
+    }
+
+    function clearStorage() {
+        localStorage.removeItem(STORAGE_KEY);
+    }
+
+    function getStorageSize() {
+        try {
+            const data = localStorage.getItem(STORAGE_KEY);
+            return data ? data.length : 0;
+        } catch (e) {
+            return 0;
+        }
+    }
+
+    // ============================================
     // STATE
     // ============================================
     let entries = [];
@@ -361,6 +447,7 @@ javascript:(function() {
     let highlightPattern = '';
     let isMinimized = false;
     let nextId = 0;
+    let autoSave = true;
 
     // ============================================
     // UI CREATION
@@ -373,6 +460,7 @@ javascript:(function() {
                 <div id="spy-title">
                     📡 Remote Spy Pro
                     <span class="badge">${entries.length}</span>
+                    <span class="badge saved" id="saved-badge">💾</span>
                 </div>
                 <div id="spy-controls">
                     <button id="spy-minimize" title="Minimizar">━</button>
@@ -388,18 +476,23 @@ javascript:(function() {
                     <option value="POST">POST</option>
                     <option value="PUT">PUT</option>
                     <option value="DELETE">DELETE</option>
+                    <option value="WS_SEND">WS Send</option>
+                    <option value="WS_RECV">WS Recv</option>
                 </select>
                 <input id="spy-highlight" placeholder="✨ Destacar texto..." style="flex:0.7;min-width:80px;" />
+                <button class="spy-btn primary" id="spy-save">💾 Salvar</button>
                 <button class="spy-btn" id="spy-export">📥 Exportar</button>
             </div>
             <div id="spy-body"></div>
             <div id="spy-status">
                 <span>📡 Monitorando requisições...</span>
-                <span>Total: <span class="count" id="spy-count">0</span></span>
+                <span>Total: <span class="count" id="spy-count">0</span> | 💾 <span class="saved-count" id="spy-saved-count">0</span></span>
+                <span class="spy-storage-info" id="storage-info">💾 0KB</span>
             </div>
         `;
         document.body.appendChild(root);
         bindEvents(root);
+        updateStorageInfo(root);
         return root;
     }
 
@@ -416,13 +509,21 @@ javascript:(function() {
 
         // Clear
         root.querySelector('#spy-clear').addEventListener('click', () => {
-            entries = [];
-            updateUI(root);
+            if (confirm('Limpar todas as entradas? (Dados salvos permanecem)')) {
+                entries = [];
+                updateUI(root);
+            }
         });
 
         // Close
         root.querySelector('#spy-close').addEventListener('click', () => {
-            root.remove();
+            if (entries.length > 0) {
+                if (confirm('Fechar Remote Spy? Os dados salvos permanecem no localStorage.')) {
+                    root.remove();
+                }
+            } else {
+                root.remove();
+            }
         });
 
         // Filter
@@ -446,6 +547,24 @@ javascript:(function() {
             updateUI(root);
         });
 
+        // Save
+        root.querySelector('#spy-save').addEventListener('click', () => {
+            if (entries.length === 0) {
+                alert('Nenhuma entrada para salvar.');
+                return;
+            }
+            if (saveToStorage(entries)) {
+                const btn = root.querySelector('#spy-save');
+                btn.textContent = '✅ Salvo!';
+                setTimeout(() => btn.textContent = '💾 Salvar', 1500);
+                updateUI(root);
+                updateStorageInfo(root);
+                showNotification('💾 Dados salvos no localStorage!');
+            } else {
+                alert('❌ Erro ao salvar no localStorage. Verifique o espaço disponível.');
+            }
+        });
+
         // Export
         root.querySelector('#spy-export').addEventListener('click', () => {
             const data = JSON.stringify(entries, null, 2);
@@ -457,6 +576,38 @@ javascript:(function() {
             a.click();
             URL.revokeObjectURL(url);
         });
+
+        // Drag to move
+        let isDragging = false;
+        let dragStartX, dragStartY, startX, startY;
+        const header = root.querySelector('#spy-header');
+        
+        header.addEventListener('mousedown', (e) => {
+            if (e.target.closest('button')) return;
+            isDragging = true;
+            const rect = root.getBoundingClientRect();
+            dragStartX = e.clientX - rect.left;
+            dragStartY = e.clientY - rect.top;
+            startX = rect.left;
+            startY = rect.top;
+            root.style.cursor = 'grabbing';
+            e.preventDefault();
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            if (!isDragging) return;
+            const x = e.clientX - dragStartX;
+            const y = e.clientY - dragStartY;
+            root.style.left = x + 'px';
+            root.style.top = y + 'px';
+            root.style.right = 'auto';
+            root.style.bottom = 'auto';
+        });
+
+        document.addEventListener('mouseup', () => {
+            isDragging = false;
+            root.style.cursor = '';
+        });
     }
 
     // ============================================
@@ -465,7 +616,18 @@ javascript:(function() {
     function updateUI(root) {
         const body = root.querySelector('#spy-body');
         const countEl = root.querySelector('#spy-count');
+        const savedCountEl = root.querySelector('#spy-saved-count');
         const badge = root.querySelector('#spy-title .badge');
+        const savedBadge = root.querySelector('#saved-badge');
+        const saveBtn = root.querySelector('#spy-save');
+
+        // Verificar se há dados salvos
+        const savedEntries = loadFromStorage();
+        const hasSavedData = savedEntries.length > 0;
+        savedBadge.style.display = hasSavedData ? 'inline' : 'none';
+        if (hasSavedData) {
+            savedBadge.textContent = `💾 ${savedEntries.length}`;
+        }
 
         let filtered = entries;
 
@@ -496,18 +658,27 @@ javascript:(function() {
             const div = document.createElement('div');
             div.className = 'spy-entry' + (entry.highlight ? ' highlight' : '');
             
+            // Verificar se já está salvo
+            const savedEntries = loadFromStorage();
+            const isSaved = savedEntries.some(e => e.id === entry.id && e.url === entry.url);
+            if (isSaved) {
+                div.classList.add('saved-indicator');
+            }
+            
             const time = new Date(entry.timestamp).toLocaleTimeString();
             
             div.innerHTML = `
                 <span class="method ${entry.method}">${entry.method}</span>
                 <span class="path">${entry.path}</span>
                 <span class="timestamp">${time}</span>
+                ${isSaved ? '<span class="save-status">💾</span>' : ''}
                 <br><span class="url">${entry.url}</span>
                 ${entry.body ? `<div class="body-preview">📦 ${entry.body.substring(0, 200)}${entry.body.length > 200 ? '...' : ''}</div>` : ''}
                 <div class="actions">
                     <button data-id="${entry.id}" class="replay-btn">▶ Replay</button>
                     <button data-id="${entry.id}" class="copy-btn">📋 Copiar</button>
                     ${entry.headers ? `<button data-id="${entry.id}" class="headers-btn">🔑 Headers</button>` : ''}
+                    <button data-id="${entry.id}" class="save-btn">💾 Salvar</button>
                 </div>
             `;
             
@@ -562,6 +733,31 @@ javascript:(function() {
                 });
             }
 
+            // Save individual
+            div.querySelector('.save-btn').addEventListener('click', (e) => {
+                e.stopPropagation();
+                const id = parseInt(e.target.dataset.id);
+                const entry = entries.find(ent => ent.id === id);
+                if (entry) {
+                    const currentSaved = loadFromStorage();
+                    // Verificar se já existe
+                    const exists = currentSaved.some(e => e.id === entry.id && e.url === entry.url);
+                    if (!exists) {
+                        currentSaved.push(entry);
+                        if (saveToStorage(currentSaved)) {
+                            const btn = e.target;
+                            btn.textContent = '✅ Salvo!';
+                            setTimeout(() => btn.textContent = '💾 Salvar', 1500);
+                            updateUI(root);
+                            updateStorageInfo(root);
+                            showNotification('💾 Entrada salva!');
+                        }
+                    } else {
+                        alert('Esta entrada já está salva.');
+                    }
+                }
+            });
+
             // Click to expand body
             div.addEventListener('click', () => {
                 const preview = div.querySelector('.body-preview');
@@ -575,8 +771,40 @@ javascript:(function() {
             });
         });
 
-        countEl.textContent = filtered.length;
+        countEl.textContent = entries.length;
+        savedCountEl.textContent = loadFromStorage().length;
         badge.textContent = entries.length;
+        
+        // Atualizar informações de storage
+        updateStorageInfo(root);
+    }
+
+    // ============================================
+    // UPDATE STORAGE INFO
+    // ============================================
+    function updateStorageInfo(root) {
+        const infoEl = root.querySelector('#storage-info');
+        if (infoEl) {
+            const size = getStorageSize();
+            const kb = (size / 1024).toFixed(1);
+            const savedCount = loadFromStorage().length;
+            infoEl.textContent = `💾 ${savedCount} entradas (${kb}KB)`;
+        }
+    }
+
+    // ============================================
+    // NOTIFICATION
+    // ============================================
+    function showNotification(message) {
+        const notif = document.createElement('div');
+        notif.style.cssText = 'position:fixed;top:20px;right:20px;background:#0a0e1a;color:#00f5d4;padding:12px 20px;border-radius:8px;border:1px solid #00f5d4;z-index:999999;font-family:monospace;font-size:14px;box-shadow:0 4px 20px rgba(0,0,0,0.8);animation:slideIn 0.3s ease;';
+        notif.textContent = message;
+        document.body.appendChild(notif);
+        setTimeout(() => {
+            notif.style.opacity = '0';
+            notif.style.transition = 'opacity 0.5s';
+            setTimeout(() => notif.remove(), 500);
+        }, 2000);
     }
 
     // ============================================
@@ -606,10 +834,10 @@ javascript:(function() {
         fetch(entry.url, options)
             .then(res => res.text())
             .then(data => {
-                alert(`✅ Replay executado!\nStatus: ${data.substring(0, 200)}`);
+                showNotification(`✅ Replay executado! Status: ${data.substring(0, 200)}`);
             })
             .catch(err => {
-                alert(`❌ Erro no replay: ${err.message}`);
+                showNotification(`❌ Erro no replay: ${err.message}`);
             });
     }
 
@@ -704,7 +932,7 @@ javascript:(function() {
     }
 
     // ============================================
-    // HOOK WebSocket (opcional)
+    // HOOK WebSocket
     // ============================================
     function hookWebSocket(root) {
         const OriginalWS = window.WebSocket;
@@ -712,7 +940,6 @@ javascript:(function() {
             const ws = new OriginalWS(...args);
             const url = args[0];
 
-            // Listen para mensagens
             const originalSend = ws.send;
             ws.send = function(data) {
                 const entry = {
@@ -729,7 +956,6 @@ javascript:(function() {
                 return originalSend.call(this, data);
             };
 
-            // Capturar mensagens recebidas
             ws.addEventListener('message', (event) => {
                 const entry = {
                     id: nextId++,
@@ -756,6 +982,13 @@ javascript:(function() {
         return;
     }
 
+    // Carregar dados salvos
+    const savedEntries = loadFromStorage();
+    if (savedEntries.length > 0) {
+        entries = savedEntries;
+        nextId = entries.length > 0 ? Math.max(...entries.map(e => e.id)) + 1 : 0;
+    }
+
     const root = createUI();
     hookFetch(root);
     hookXHR(root);
@@ -763,20 +996,12 @@ javascript:(function() {
 
     updateUI(root);
 
-    console.log('%c📡 Remote Spy Pro ativado!', 'font-size:20px; color:#00f5d4; font-weight:bold;');
-    console.log('%cTodas as requisições estão sendo capturadas.', 'color:#aaa;');
-    console.log('%cClique no painel flutuante para interagir.', 'color:#aaa;');
+    console.log('%c📡 Remote Spy Pro v2.0 ativado!', 'font-size:20px; color:#00f5d4; font-weight:bold;');
+    console.log('%cDados salvos: ' + loadFromStorage().length + ' entradas', 'color:#aaa;');
+    console.log('%cUse o botão 💾 Salvar para persistir os dados.', 'color:#aaa;');
+    console.log('%cOs dados são armazenados no localStorage do navegador.', 'color:#aaa;');
 
-    // Notificação visual
-    const notification = document.createElement('div');
-    notification.style.cssText = 'position:fixed;top:20px;right:20px;background:#0a0e1a;color:#00f5d4;padding:12px 20px;border-radius:8px;border:1px solid #00f5d4;z-index:999999;font-family:monospace;font-size:14px;box-shadow:0 4px 20px rgba(0,0,0,0.8);animation:slideIn 0.3s ease;';
-    notification.textContent = '✅ Remote Spy Pro ativado!';
-    document.body.appendChild(notification);
-    setTimeout(() => {
-        notification.style.opacity = '0';
-        notification.style.transition = 'opacity 0.5s';
-        setTimeout(() => notification.remove(), 500);
-    }, 2000);
+    showNotification('✅ Remote Spy Pro v2.0 ativado!');
 
     // Adicionar keyframe animation
     if (!document.getElementById('spy-keyframes')) {
@@ -791,10 +1016,4 @@ javascript:(function() {
         document.head.appendChild(kf);
     }
 
-    // ============================================
-    // GITHUB RAW VERSION
-    // ============================================
-    // Para usar, crie um arquivo .js no GitHub e cole este código
-    // Depois use: https://raw.githubusercontent.com/seu-user/seu-repo/main/spy.js
-    // No bookmarklet: javascript:(function(){fetch('URL_RAW').then(r=>r.text()).then(eval);})();
 })();
