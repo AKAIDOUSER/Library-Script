@@ -2,13 +2,17 @@
     'use strict';
 
     // -----------------------------------------------------------------------------------
-    // IMPORTANTE: CHAVE DA API MISTRAL
+    // CHAVE DA API MISTRAL
     // -----------------------------------------------------------------------------------
-    let MISTRAL_API_KEY = null; // Será definida via popup
+    let MISTRAL_API_KEY = null;
     const MISTRAL_MODEL_NAME = "mistral-large-latest";
     // -----------------------------------------------------------------------------------
 
     let lastAiResponse = '';
+    let isProcessing = false; // Previne múltiplas execuções simultâneas
+    let rateLimitRetryCount = 0;
+    const MAX_RATE_LIMIT_RETRIES = 3;
+    const RATE_LIMIT_DELAY = 2000; // 2 segundos entre tentativas
 
     // --- DETECÇÃO DE QUIZ ID (v46) ---
     const regexQuizId = /\/(?:quiz|quizzes|admin\/quiz|games|attempts|join)\/([a-f0-9]{24})/i;
@@ -122,7 +126,7 @@
                 return { questionText, questionImageUrl, questionType: 'equation' };
             }
 
-            // NOVA LÓGICA (v52.0): TIPO DRAG AND DROP SOBRE IMAGEM
+            // DRAG AND DROP SOBRE IMAGEM
             const dragDropImageBlanks = document.querySelectorAll('.drag-and-drop-image-blank');
             const dragDropImageOptions = document.querySelectorAll('.drag-option-dnd-image');
             if (dragDropImageBlanks.length > 0 && dragDropImageOptions.length > 0) {
@@ -140,9 +144,8 @@
                     return { element: el, top: rect.top, left: rect.left };
                 });
 
-                // Ordena os blanks de cima para baixo, e se estiverem na mesma linha, da esquerda para a direita
                 dropZonesData.sort((a, b) => {
-                    if (Math.abs(a.top - b.top) > 20) { // Tolerância de 20px para a mesma "linha"
+                    if (Math.abs(a.top - b.top) > 20) {
                         return a.top - b.top;
                     }
                     return a.left - b.left;
@@ -182,7 +185,7 @@
                 return { questionText, questionImageUrl, questionType: 'drag_into_blank', draggableOptions, dropZone: { element: droppableBlanks[0] } };
             }
 
-            // TIPO CATEGORIZE (v51.0)
+            // TIPO CATEGORIZE
             const classificationContainer = document.querySelector('.classification-question, .classification-layout-evaluation-completed, .classification-layout');
             if (classificationContainer) {
                 console.log("Tipo Categorize detectado.");
@@ -281,88 +284,147 @@
         const viewResponseBtn = document.getElementById('view-raw-response-btn');
         if (viewResponseBtn) viewResponseBtn.style.display = 'none';
 
-        // Verifica se a chave API está definida
         if (!MISTRAL_API_KEY) {
             throw new Error("Chave da API Mistral não configurada. Por favor, recarregue a página e insira a chave.");
         }
 
-        // --- 1. Lógica de Prompt ---
+        // --- CONSTRUÇÃO DO PROMPT OTIMIZADO PARA 100% DE PRECISÃO ---
         let promptDeInstrucao = "", formattedOptions = "";
+        
+        // Prompt base com instruções rigorosas para precisão máxima
+        const baseInstructions = `Você é um assistente especializado em resolver questões do Quizizz com 100% de precisão. 
+Siga estas regras estritamente:
+1. Analise cuidadosamente a pergunta e todas as opções disponíveis.
+2. Para questões de múltipla escolha, selecione APENAS as respostas corretas e exatas.
+3. Para questões de arrastar e soltar, faça a correspondência correta.
+4. Para questões de preencher lacunas, forneça a resposta exata.
+5. SEMPRE forneça a resposta no formato solicitado.
+6. Se houver ambiguidade, escolha a opção mais logicamente correta.
+7. NUNCA invente respostas - use apenas o que está disponível nas opções.
+8. Para questões matemáticas, resolva passo a passo e forneça o resultado final.`;
+
         switch (quizData.questionType) {
             case 'drag_and_drop_image':
-                promptDeInstrucao = `Esta é uma questão de arrastar rótulos para áreas específicas de uma imagem. As áreas vazias (ESPAÇOS) na imagem foram ordenadas da sua visão de cima para baixo e da esquerda para a direita. Relacione cada espaço visual com o rótulo correto baseado na anatomia/assunto. Responda no formato EXATO: 'ESPAÇO X -> Nome do Rótulo', com cada par em uma nova linha.`;
+                promptDeInstrucao = `${baseInstructions}\n\nEsta é uma questão de arrastar rótulos para áreas específicas de uma imagem. 
+As áreas vazias foram ordenadas da esquerda para a direita e de cima para baixo.
+Relacione CADA espaço com o rótulo correto baseado na anatomia/assunto.
+Responda no formato EXATO: 'ESPAÇO X -> Nome do Rótulo', com cada par em uma nova linha.`;
                 const draggablesImgOptions = quizData.draggableOptions.map(item => `- "${item.text}"`).join('\n');
                 const dropZonesList = quizData.dropZones.map(item => `- "${item.id}"`).join('\n');
-                formattedOptions = `Rótulos Disponíveis:\n${draggablesImgOptions}\n\nEspaços na Imagem:\n${dropZonesList}`;
+                formattedOptions = `Rótulos Disponíveis (use APENAS estes):\n${draggablesImgOptions}\n\nEspaços na Imagem (ordem correta):\n${dropZonesList}`;
                 break;
+                
             case 'categorize':
-                promptDeInstrucao = `Esta é uma questão de categorização. Para cada item listado, forneça a categoria correta no formato EXATO: 'Texto do Item -> Nome da Categoria', com cada par em uma nova linha.`;
+                promptDeInstrucao = `${baseInstructions}\n\nEsta é uma questão de categorização. 
+Para CADA item listado, forneça a categoria correta.
+Responda no formato EXATO: 'Texto do Item -> Nome da Categoria', com cada par em uma nova linha.`;
                 const catNames = quizData.categories.map(c => `- "${c.name}"`).join('\n');
                 const itemNames = quizData.draggables.map(i => `- "${i.text}"`).join('\n');
                 formattedOptions = `Categorias Disponíveis:\n${catNames}\n\nItens para Categorizar:\n${itemNames}`;
                 break;
+                
             case 'multi_dropdown':
-                promptDeInstrucao = `Esta é uma questão com múltiplas lacunas ([RESPOSTA X]). As opções disponíveis são um pool compartilhado e cada opção só pode ser usada uma vez. Determine a resposta correta para CADA placeholder. Responda com cada resposta em uma nova linha, no formato '[RESPOSTA X]: Resposta Correta'. Se algum placeholder não tiver uma resposta lógica no pool (ex: está fora da sequência), omita-o da resposta.`;
-                formattedOptions = "Pool de Opções Disponíveis: " + quizData.allAvailableOptions.join(', ');
+                promptDeInstrucao = `${baseInstructions}\n\nEsta é uma questão com múltiplas lacunas. 
+As opções disponíveis são um pool compartilhado e cada opção só pode ser usada uma vez.
+Determine a resposta correta para CADA placeholder baseado no contexto.
+Responda com cada resposta em uma nova linha, no formato '[RESPOSTA X]: Resposta Correta'.`;
+                formattedOptions = `Pool de Opções Disponíveis (use APENAS estas): ${quizData.allAvailableOptions.join(', ')}
+                
+Contexto: ${quizData.questionText}`;
                 break;
+                
             case 'match_image_to_text':
-                promptDeInstrucao = `Esta é uma questão de combinar imagens com seus textos correspondentes. Para cada imagem, forneça o par correto no formato EXATO: 'Texto da Opção -> ID da Imagem' (ex: 90° -> IMAGEM 3), com cada par em uma nova linha.`;
+                promptDeInstrucao = `${baseInstructions}\n\nEsta é uma questão de combinar imagens com seus textos correspondentes.
+Para cada imagem, forneça o par correto.
+Responda no formato EXATO: 'Texto da Opção -> ID da Imagem' (ex: 90° -> IMAGEM 3).`;
                 const dropZoneTexts = quizData.dropZones.map(item => `- "${item.text}"`).join('\n');
-                formattedOptions = `Opções de Texto (Locais para Soltar):\n${dropZoneTexts}`;
+                formattedOptions = `Opções de Texto (use APENAS estas):\n${dropZoneTexts}`;
                 break;
+                
             case 'match_order':
-                promptDeInstrucao = `Responda com os pares no formato EXATO: 'Texto do Local para Soltar -> Texto do Item para Arrastar', com cada par em uma nova linha.`;
+                promptDeInstrucao = `${baseInstructions}\n\nEsta é uma questão de correspondência.
+Combine cada item com seu par correto.
+Responda no formato EXATO: 'Texto do Local para Soltar -> Texto do Item para Arrastar'.`;
                 const draggables = quizData.draggableItems.map(item => `- "${item.text}"`).join('\n');
                 const droppables = quizData.dropZones.map(item => `- "${item.text}"`).join('\n');
                 formattedOptions = `Itens para Arrastar:\n${draggables}\n\nLocais para Soltar:\n${droppables}`;
                 break;
-            case 'multi_drag_into_blank': promptDeInstrucao = `Esta é uma questão de combinar múltiplas sentenças com suas expressões corretas. Responda com os pares no formato EXATO: 'Sentença da pergunta -> Expressão da opção', com cada par em uma nova linha.`; const prompts = quizData.dropZones.map(item => `- "${item.prompt}"`).join('\n'); const options = quizData.draggableOptions.map(item => `- "${item.text}"`).join('\n'); formattedOptions = `Sentenças:\n${prompts}\n\nExpressões (Opções):\n${options}`; break;
-            case 'equation': promptDeInstrucao = `Resolva a seguinte equação ou inequação. Forneça apenas a expressão final simplificada (ex: x = 5, ou y > 3).`; formattedOptions = `EQUAÇÃO: "${quizData.questionText}"`; break;
-            case 'dropdown': case 'single_choice': promptDeInstrucao = `Responda APENAS com o texto exato da ÚNICA alternativa correta.`; formattedOptions = "OPÇÕES:\n" + quizData.options.map(opt => `- "${opt.text}"`).join('\n'); break;
-            case 'reorder': promptDeInstrucao = `A tarefa é: "${quizData.questionText}". Forneça a ordem correta listando os textos dos itens, um por linha, do primeiro ao último.`; formattedOptions = "Itens para ordenar:\n" + quizData.draggableItems.map(item => `- "${item.text}"`).join('\n'); break;
-            case 'drag_into_blank': promptDeInstrucao = `Responda APENAS com o texto da ÚNICA opção correta que preenche a lacuna.`; formattedOptions = "Opções para arrastar:\n" + quizData.draggableOptions.map(item => `- "${item.text}"`).join('\n'); break;
-            case 'open_ended': promptDeInstrucao = `Responda APENAS com a palavra ou frase curta que preenche a lacuna.`; break;
-            case 'multiple_choice': promptDeInstrucao = `Responda APENAS com os textos exatos de TODAS as alternativas corretas, separando cada uma em uma NOVA LINHA.`; formattedOptions = "OPÇÕES:\n" + quizData.options.map(opt => `- "${opt.text}"`).join('\n'); break;
+                
+            case 'multi_drag_into_blank':
+                promptDeInstrucao = `${baseInstructions}\n\nEsta é uma questão de combinar sentenças com expressões corretas.
+Combine cada sentença com a expressão correta.
+Responda no formato EXATO: 'Sentença -> Expressão'.`;
+                const prompts = quizData.dropZones.map(item => `- "${item.prompt}"`).join('\n');
+                const options = quizData.draggableOptions.map(item => `- "${item.text}"`).join('\n');
+                formattedOptions = `Sentenças:\n${prompts}\n\nExpressões Disponíveis:\n${options}`;
+                break;
+                
+            case 'equation':
+                promptDeInstrucao = `${baseInstructions}\n\nResolva a equação ou inequação abaixo.
+Forneça APENAS a expressão final simplificada (ex: x = 5, ou y > 3).
+Mostre o resultado final apenas, sem explicações.`;
+                formattedOptions = `EQUAÇÃO: "${quizData.questionText}"`;
+                break;
+                
+            case 'dropdown':
+            case 'single_choice':
+                promptDeInstrucao = `${baseInstructions}\n\nResponda APENAS com o texto exato da ÚNICA alternativa correta.
+Não inclua números, letras ou pontuação adicional.`;
+                formattedOptions = "OPÇÕES (selecione APENAS uma):\n" + quizData.options.map(opt => `- "${opt.text}"`).join('\n');
+                break;
+                
+            case 'reorder':
+                promptDeInstrucao = `${baseInstructions}\n\nA tarefa é: "${quizData.questionText}".
+Forneça a ordem correta listando os textos dos itens, um por linha, do primeiro ao último.`;
+                formattedOptions = "Itens para ordenar:\n" + quizData.draggableItems.map(item => `- "${item.text}"`).join('\n');
+                break;
+                
+            case 'drag_into_blank':
+                promptDeInstrucao = `${baseInstructions}\n\nResponda APENAS com o texto da ÚNICA opção correta que preenche a lacuna.`;
+                formattedOptions = "Opções disponíveis:\n" + quizData.draggableOptions.map(item => `- "${item.text}"`).join('\n');
+                break;
+                
+            case 'open_ended':
+                promptDeInstrucao = `${baseInstructions}\n\nResponda APENAS com a palavra ou frase curta que preenche a lacuna.
+Não inclua explicações ou pontuação desnecessária.`;
+                break;
+                
+            case 'multiple_choice':
+                promptDeInstrucao = `${baseInstructions}\n\nResponda APENAS com os textos exatos de TODAS as alternativas corretas.
+Separe cada resposta em uma NOVA LINHA.
+Não inclua números, letras ou pontuação adicional.`;
+                formattedOptions = "OPÇÕES:\n" + quizData.options.map(opt => `- "${opt.text}"`).join('\n');
+                break;
         }
+        
         let textPrompt = `${promptDeInstrucao}\n\n---\nPERGUNTA: "${quizData.questionText}"\n---\n${formattedOptions}`;
 
-        // --- 2. Processamento de Imagem (Mistral não suporta imagens) ---
-        // Para questões com imagens, avisamos o usuário que o Mistral não suporta imagens
-        if (quizData.questionImageUrl || quizData.questionType === 'match_image_to_text') {
-            console.warn("Mistral não suporta imagens. Tentando continuar sem a imagem...");
-            // Remove a imagem da pergunta se possível
-            if (quizData.questionImageUrl) {
-                const questionTextWithoutImage = quizData.questionText;
-                textPrompt = `${promptDeInstrucao}\n\n---\nPERGUNTA: "${questionTextWithoutImage}"\n---\n${formattedOptions}`;
-            }
-            if (quizData.questionType === 'match_image_to_text') {
-                // Tenta converter para match_order sem imagens
-                quizData.questionType = 'match_order';
-                quizData.draggableItems = quizData.draggableItems.map(item => ({
-                    text: item.id,
-                    element: item.element
-                }));
-                promptDeInstrucao = `Responda com os pares no formato EXATO: 'Texto do Local para Soltar -> ID da Imagem' (ex: 90° -> IMAGEM 3), com cada par em uma nova linha.`;
-                const draggables = quizData.draggableItems.map(item => `- "${item.text}"`).join('\n');
-                const droppables = quizData.dropZones.map(item => `- "${item.text}"`).join('\n');
-                formattedOptions = `Itens para Arrastar (IDs):\n${draggables}\n\nLocais para Soltar:\n${droppables}`;
-                textPrompt = `${promptDeInstrucao}\n\n---\nPERGUNTA: "${quizData.questionText}"\n---\n${formattedOptions}`;
-            }
+        // Verificação de duplicação para evitar loops
+        if (textPrompt.length > 8000) {
+            textPrompt = textPrompt.substring(0, 8000);
+            console.warn("Prompt truncado devido ao limite de tamanho");
         }
 
-        // --- 3. Lógica de Fetch para Mistral ---
-        try {
-            console.log("Usando Provedor: Mistral");
-            const API_URL = 'https://api.mistral.ai/v1/chat/completions';
+        // --- CHAMADA À API COM RETRY PARA RATE LIMIT ---
+        console.log("Enviando requisição para Mistral AI...");
+        
+        const API_URL = 'https://api.mistral.ai/v1/chat/completions';
+        let attempts = 0;
+        let lastError = null;
 
-            const body = JSON.stringify({
-                model: MISTRAL_MODEL_NAME,
-                messages: [{ role: 'user', content: textPrompt }],
-                max_tokens: 1024,
-                temperature: 0.1
-            });
-
+        while (attempts < MAX_RATE_LIMIT_RETRIES) {
             try {
+                const body = JSON.stringify({
+                    model: MISTRAL_MODEL_NAME,
+                    messages: [{ 
+                        role: 'user', 
+                        content: textPrompt 
+                    }],
+                    max_tokens: 1024,
+                    temperature: 0.1, // Baixa temperatura para respostas mais determinísticas
+                    top_p: 0.9
+                });
+
                 const response = await fetchWithTimeout(API_URL, {
                     method: 'POST',
                     headers: {
@@ -375,45 +437,62 @@
                 if (response.ok) {
                     const data = await response.json();
                     const aiResponseText = data.choices[0].message.content;
-                    console.log(`Sucesso com a API Mistral.`);
+                    console.log(`Sucesso com a API Mistral (tentativa ${attempts + 1}).`);
                     lastAiResponse = aiResponseText;
-                    return aiResponseText;
+                    
+                    // Verifica se a resposta é válida
+                    if (aiResponseText && aiResponseText.length > 0) {
+                        return aiResponseText;
+                    } else {
+                        throw new Error("Resposta vazia da API");
+                    }
                 } else {
                     const errorData = await response.json();
                     const errorMessage = errorData.error?.message || `Erro ${response.status}`;
-                    console.warn(`API Mistral falhou: ${errorMessage}`);
-                    lastAiResponse = `Falha na API Mistral: ${errorMessage}`;
                     
-                    // Se a chave for inválida, pede uma nova
+                    // Tratamento específico para rate limit (429)
+                    if (response.status === 429) {
+                        console.warn(`Rate limit atingido (tentativa ${attempts + 1}/${MAX_RATE_LIMIT_RETRIES}). Aguardando ${RATE_LIMIT_DELAY}ms...`);
+                        await new Promise(resolve => setTimeout(resolve, RATE_LIMIT_DELAY * (attempts + 1)));
+                        attempts++;
+                        continue;
+                    }
+                    
+                    // Tratamento para chave inválida (401)
                     if (response.status === 401) {
                         MISTRAL_API_KEY = null;
                         await solicitarChaveMistral();
-                        // Tenta novamente
-                        return await obterRespostaDaIA(quizData);
+                        if (MISTRAL_API_KEY) {
+                            attempts++;
+                            continue;
+                        }
                     }
                     
-                    throw new Error(`API Mistral falhou: ${errorMessage}`);
+                    lastError = new Error(`API Mistral falhou: ${errorMessage}`);
+                    break;
                 }
             } catch (error) {
-                console.warn(`Erro na requisição com a API Mistral: ${error.message}`);
-                lastAiResponse = `Falha na API Mistral: ${error.message}`;
+                lastError = error;
+                console.warn(`Erro na tentativa ${attempts + 1}: ${error.message}`);
                 
-                // Se houve erro de rede ou timeout, tenta novamente após pedir a chave
-                if (!MISTRAL_API_KEY) {
-                    await solicitarChaveMistral();
-                    return await obterRespostaDaIA(quizData);
+                if (error.message.includes('Timeout') || error.message.includes('AbortError')) {
+                    // Timeout - aguarda e tenta novamente
+                    await new Promise(resolve => setTimeout(resolve, RATE_LIMIT_DELAY));
+                    attempts++;
+                    continue;
                 }
-                
-                throw error;
+                break;
             }
-
-        } catch (error) {
-            console.error(`Falha ao obter resposta da IA (Mistral):`, error.message);
-            lastAiResponse = `Erro: ${error.message}`;
-            throw error;
         }
-    }
 
+        // Se todas as tentativas falharam
+        if (lastError) {
+            lastAiResponse = `Falha após ${attempts} tentativas: ${lastError.message}`;
+            throw lastError;
+        }
+        
+        throw new Error("Não foi possível obter resposta da API após múltiplas tentativas");
+    }
 
     async function performAction(aiAnswerText, quizData) {
         if (!aiAnswerText) return;
@@ -456,14 +535,11 @@
                         const color = highlightColorsDnd[colorIndexDnd % highlightColorsDnd.length];
                         const highlightStyle = `box-shadow: 0 0 15px 5px ${color}; border-radius: 8px; border: 2px solid ${color} !important;`;
                         sourceEl.style.cssText += highlightStyle;
-
-                        // Destacando a bolinha na imagem com a cor sem alterar o tamanho (v52.1)
                         destinationEl.style.backgroundColor = color;
                         destinationEl.style.opacity = '0.9';
                         destinationEl.style.boxShadow = `0 0 10px 5px ${color}`;
                         destinationEl.style.border = `2px solid #fff`;
                         destinationEl.style.zIndex = '100';
-
                         colorIndexDnd++;
                     } else {
                         console.warn(`Par não encontrado na tela: "${espacoId}" -> "${labelText}"`);
@@ -812,16 +888,26 @@
     }
 
     async function resolverQuestao() {
+        // Previne múltiplas execuções simultâneas
+        if (isProcessing) {
+            console.log("Já está processando uma questão. Aguarde...");
+            return;
+        }
+        
         const button = document.getElementById('ai-solver-button');
+        if (!button) return;
+        
+        isProcessing = true;
+        const originalText = button.innerText;
         button.disabled = true;
-        button.innerText = "Pensando...";
+        button.innerText = "⏳ Processando...";
         button.style.transform = 'scale(0.95)';
         button.style.boxShadow = '0 0 0 rgba(0,0,0,0)';
+        
         try {
             // Verifica se a chave está definida
             if (!MISTRAL_API_KEY) {
                 await solicitarChaveMistral();
-                // Se ainda não tiver chave, não continua
                 if (!MISTRAL_API_KEY) {
                     alert("Chave da API Mistral não fornecida. O script não pode continuar.");
                     return;
@@ -892,25 +978,32 @@
             }
         } catch (error) {
             console.error("Um erro inesperado ocorreu no fluxo principal:", error);
-            if (error.message && !error.message.includes("Ação cancelada")) {
-                alert("Ocorreu um erro: " + error.message);
+            // Mostra mensagem amigável para o usuário
+            let userMessage = "Ocorreu um erro: ";
+            if (error.message.includes("429") || error.message.includes("rate limit")) {
+                userMessage += "Limite de requisições atingido. Aguarde alguns segundos e tente novamente.";
+            } else if (error.message.includes("chave") || error.message.includes("API key")) {
+                userMessage += "Chave da API inválida ou expirada. Por favor, insira uma nova chave.";
+            } else {
+                userMessage += error.message;
             }
+            alert(userMessage);
         } finally {
             const viewResponseBtn = document.getElementById('view-raw-response-btn');
             if (viewResponseBtn && lastAiResponse) {
                 viewResponseBtn.style.display = 'block';
             }
             button.disabled = false;
-            button.innerText = "✨ Resolver";
+            button.innerText = originalText;
             button.style.transform = 'scale(1)';
             button.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.2)';
+            isProcessing = false;
         }
     }
 
     // --- FUNÇÃO PARA SOLICITAR CHAVE MISTRAL ---
     function solicitarChaveMistral() {
         return new Promise((resolve) => {
-            // Verifica se já existe um modal
             const existingModal = document.getElementById('mistral-key-modal');
             if (existingModal) {
                 existingModal.remove();
@@ -1013,7 +1106,6 @@
                 }
             };
 
-            // Enter key to submit
             input.addEventListener('keydown', (e) => {
                 if (e.key === 'Enter') {
                     btnConfirm.click();
@@ -1029,31 +1121,22 @@
             overlay.appendChild(modalContainer);
             document.body.appendChild(overlay);
 
-            // Focus input
             setTimeout(() => input.focus(), 100);
-
             setTimeout(() => overlay.style.opacity = '1', 10);
         });
     }
 
-    // --- LÓGICA DA UI (v50) ---
+    // --- LÓGICA DA UI ---
 
-    /**
-     * Torna o painel flutuante arrastável. (v50)
-     * @param {HTMLElement} panel - O elemento principal do painel.
-     * @param {HTMLElement} handle - O elemento que aciona o arraste (neste caso, o próprio painel).
-     */
     function makeDraggable(panel, handle) {
         let offsetX = 0, offsetY = 0, isDragging = false;
 
         handle.addEventListener('mousedown', (e) => {
-            // Previne o arraste se o clique foi em um botão ou link
             if (e.target.tagName === 'BUTTON' || e.target.closest('a')) return;
 
             isDragging = true;
             const rect = panel.getBoundingClientRect();
 
-            // Converte a posição 'bottom'/'right' para 'top'/'left' na primeira vez
             if (panel.style.bottom || panel.style.right) {
                 panel.style.right = 'auto';
                 panel.style.bottom = 'auto';
@@ -1064,7 +1147,7 @@
             offsetX = e.clientX - panel.getBoundingClientRect().left;
             offsetY = e.clientY - panel.getBoundingClientRect().top;
 
-            panel.style.transition = 'none'; // Desabilita transição suave durante o arraste
+            panel.style.transition = 'none';
             handle.style.cursor = 'grabbing';
         });
 
@@ -1074,7 +1157,6 @@
             let newX = e.clientX - offsetX;
             let newY = e.clientY - offsetY;
 
-            // Mantém o painel dentro da tela
             newX = Math.max(0, Math.min(newX, window.innerWidth - panel.offsetWidth));
             newY = Math.max(0, Math.min(newY, window.innerHeight - panel.offsetHeight));
 
@@ -1085,7 +1167,7 @@
         document.addEventListener('mouseup', () => {
             if (!isDragging) return;
             isDragging = false;
-            panel.style.transition = 'transform 0.3s ease-out, opacity 0.3s ease-out'; // Reabilita
+            panel.style.transition = 'transform 0.3s ease-out, opacity 0.3s ease-out';
             handle.style.cursor = 'default';
         });
     }
@@ -1139,7 +1221,6 @@
         });
         panel.appendChild(viewResponseBtn);
 
-        // --- Botão Ocultar (v50) ---
         const toggleBtn = document.createElement('button');
         toggleBtn.id = 'toggle-ui-btn';
         toggleBtn.innerText = 'Ocultar';
@@ -1151,9 +1232,7 @@
             marginBottom: '4px'
         });
         panel.appendChild(toggleBtn);
-        // --- Fim do Botão Ocultar ---
 
-        // Removido o botão de alternância Gemini/DeepSeek, agora mostra apenas Mistral
         const providerLabel = document.createElement('div');
         providerLabel.id = 'provider-label';
         providerLabel.innerText = '🤖 Mistral AI';
@@ -1187,7 +1266,7 @@
         panel.appendChild(button);
 
         const watermark = document.createElement('div');
-        watermark.id = 'mzzvxm-watermark'; // ID para ocultar
+        watermark.id = 'mzzvxm-watermark';
         const githubIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 3c-.58.0-1.25.27-2 1.5c-2.2.86-4.5 1.3-7 1.3-2.5 0-4.7-.44-7-1.3-.75-1.23-1.42-1.5-2-1.5A5.07 5.07 0 0 0 4 4.77 5.44 5.44 0 0 0 2 10.71c0 6.13 3.49 7.34 6.44 7A3.37 3.37 0 0 0 9 18.13V22"></path></svg>`;
         const instagramIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="5" ry="5"></rect><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"></path><line x1="17.5" y1="6.5" x2="17.51" y2="6.5"></line></svg>`;
         watermark.innerHTML = `
@@ -1204,7 +1283,6 @@
         panel.appendChild(watermark);
         document.body.appendChild(panel);
 
-        // --- LÓGICA DE OCULTAR/MOSTRAR (v50) ---
         const contentToToggle = [
             'view-raw-response-btn',
             'provider-label',
@@ -1213,7 +1291,7 @@
         ];
 
         toggleBtn.addEventListener('click', (e) => {
-            e.stopPropagation(); // Previne que o clique no botão inicie o arraste
+            e.stopPropagation();
             const isHidden = toggleBtn.innerText === 'Mostrar';
             toggleBtn.innerText = isHidden ? 'Ocultar' : 'Mostrar';
 
@@ -1224,23 +1302,19 @@
                 }
             });
 
-            // Re-aplica 'display: none' ao viewResponseBtn se ele já estava oculto
             if (isHidden && !lastAiResponse) {
                  document.getElementById('view-raw-response-btn').style.display = 'none';
             }
         });
 
-        // --- LÓGICA DE ARRASTAR (v50) ---
-        // A alça é o painel inteiro
         makeDraggable(panel, panel);
 
         setTimeout(() => {
             panel.style.transform = 'translateY(0)';
             panel.style.opacity = '1';
         }, 100);
-        console.log("Floating Panel do resolvedor v52.1 (Mistral) criado com sucesso!");
+        console.log("Floating Panel do resolvedor v52.2 (Mistral) criado com sucesso!");
         
-        // Verifica se a chave já está definida, se não, pede
         if (!MISTRAL_API_KEY) {
             setTimeout(() => {
                 solicitarChaveMistral();
@@ -1248,12 +1322,10 @@
         }
     }
 
-    // --- LÓGICA DE DETECÇÃO DE QUIZ ID (v46) ---
+    // --- LÓGICA DE DETECÇÃO DE QUIZ ID ---
 
     function logQuizId(id, source) {
-        if (id === quizIdDetected) {
-            return;
-        }
+        if (id === quizIdDetected) return;
         quizIdDetected = id;
         console.log(`[Quizizz Bypass] Novo Quiz ID detectado (${source}): %c${id}`, "color: #00FF00; font-weight: bold;");
     }
@@ -1317,10 +1389,7 @@
         window.addEventListener("popstate", () => setTimeout(initQuizIdDetector, 300));
     })();
 
-    // --- FIM DA LÓGICA DE DETECÇÃO DE QUIZ ID ---
-
-
-    async function fetchWithTimeout(resource, options = {}, timeout = 15000) {
+    async function fetchWithTimeout(resource, options = {}, timeout = 30000) {
         const controller = new AbortController();
         const id = setTimeout(() => controller.abort(), timeout);
         try {
@@ -1357,7 +1426,7 @@
     }
 
     // --- Start ---
-    setTimeout(criarFloatingPanel, 2000); // Inicia a UI
-    initQuizIdDetector(); // Inicia o detector de ID
+    setTimeout(criarFloatingPanel, 2000);
+    initQuizIdDetector();
 
 })();
