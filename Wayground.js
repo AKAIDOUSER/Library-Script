@@ -4,7 +4,7 @@
     // -----------------------------------------------------------------------------------
     // CHAVE DA API MISTRAL
     // -----------------------------------------------------------------------------------
-    let MISTRAL_API_KEY = "j1OiqHcfasfbmRsjAYT1nJCkEN9LEeh8";
+    let MISTRAL_API_KEY = "aneu8HkmSf5JP1YJ3CkBGCAlhd4Ninlc";
     const MISTRAL_MODEL_NAME = "mistral-large-latest";
     // -----------------------------------------------------------------------------------
 
